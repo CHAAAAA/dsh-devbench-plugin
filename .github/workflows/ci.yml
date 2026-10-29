@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, test, build, pack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (includes architecture boundary rules)
+        run: npm run lint
+
+      - name: Validate host message catalog
+        run: npm run messages:check
+
+      - name: Build client bundle
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Release preflight
+        run: npm run release:preflight
+
+      - name: Pack release tarball
+        run: npm run release:pack
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-devbench-plugin-tarball
+          path: |
+            dist/release/*.tgz
+            dist/release/manifest.json
+          if-no-files-found: error

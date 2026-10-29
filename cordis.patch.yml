@@ -1,0 +1,3 @@
+- insert:
+    - id: devbench-manager
+      name: 'dsh-devbench-plugin'

@@ -1,0 +1,106 @@
+/** Settings / commit modal / link view dictionaries (merged in i18n.js). Keys must exist in both languages. */
+export const zh = {
+  /* CommitConfirmModal */
+  'project.commit.taskLabel': '任务 ID',
+  'project.commit.path': '路径',
+  'project.commit.head': 'HEAD',
+  'project.commit.dismissHint': '「稍后处理」或关闭弹窗只会收起，不会取消任务；任务会保持「等待确认」，可稍后从概览或任务页再次打开。',
+  'project.commit.messageRequired': '提交信息不能为空',
+  'project.commit.chineseMissing': '提交信息需要包含中文，否则服务端会拒绝提交。',
+  'project.commit.messageTooLong': '提交信息超过 2000 字符，服务端会拒绝提交。',
+
+  /* SettingsView */
+  'settings.unsaved': '有未保存设置',
+  'settings.unsaved.discard': '放弃修改',
+  'settings.saving': '保存中…',
+  'settings.leave.title': '有未保存的设置修改',
+  'settings.leave.body': '离开设置页会丢失尚未保存的修改。可以保存后离开，或放弃本次修改。',
+  'settings.leave.save': '保存并离开',
+  'settings.leave.discard': '放弃修改',
+  'settings.leave.stay': '继续编辑',
+  'settings.root.change.title': '确认修改需求根目录？',
+  'settings.root.change.body': '需求根目录将从 {old} 改为 {new}。',
+  'settings.root.change.impact': '修改后，旧需求根目录中的需求将不再显示；需求文件不会被删除。',
+  'settings.worktree.change.title': '确认修改 worktree 根目录？',
+  'settings.worktree.change.body': 'Worktree 根目录将从 {old} 改为 {new}（留空表示使用默认目录）。',
+  'settings.worktree.change.impact': '修改后，旧 worktree 根目录中的 worktree 将不再显示；目录与分支不会被删除。',
+  'settings.pathChange.confirm': '确认修改',
+  'settings.reviewTemplate.invalid': '评审提示词模板必须包含 {taskId} 占位符。',
+  'settings.commitTemplate.invalid': '提交提示词模板必须包含 {taskId}、{changedFiles} 和 {diffText} 占位符。',
+  'settings.git.desc': '这里提交的是「需求根目录」仓库中的需求文档变更，与项目代码仓库的 AI 提交相互独立。',
+  'settings.git.changesCount': '{count} 个文件有变更',
+  'settings.git.committing': '提交中…',
+  'settings.git.committed': '需求文档变更已提交',
+  'settings.git.initSuccess': 'Git 仓库已初始化',
+  'settings.git.messageEmpty': '请先填写提交信息。',
+  'settings.git.confirm.title': '提交所有需求变更？',
+  'settings.git.confirm.body': '将提交需求根目录仓库中的全部变更（{count} 个文件），而不是项目代码。',
+  'settings.git.confirm.action': '确认提交',
+  'settings.git.confirm.message': '提交信息：{message}',
+  'settings.git.confirm.files': '变更文件（{count}）',
+  'settings.git.confirm.more': '还有 {count} 个文件…',
+
+  /* LinkView */
+  'link.session': '正在关联会话：{name}',
+  'link.search': '搜索需求（标题 / ID）…',
+  'link.search.empty': '没有匹配的需求',
+  'link.groupCount': '{count} 个需求',
+  'link.totalCount': '共 {count} 个可关联需求',
+  'link.busy': '关联中…',
+
+  /* Session header action */
+  'session.action.error': '读取会话关联失败：{message}（点击重试）',
+}
+
+export const en = {
+  /* CommitConfirmModal */
+  'project.commit.taskLabel': 'Task ID',
+  'project.commit.path': 'Path',
+  'project.commit.head': 'HEAD',
+  'project.commit.dismissHint': '"Later" or closing the dialog only dismisses it and never cancels the task; the task stays awaiting confirmation and can be reopened from the overview or tasks tab.',
+  'project.commit.messageRequired': 'Commit message is required',
+  'project.commit.chineseMissing': 'The message must contain Chinese characters, otherwise the server rejects the commit.',
+  'project.commit.messageTooLong': 'The message exceeds 2000 characters; the server rejects the commit.',
+
+  /* SettingsView */
+  'settings.unsaved': 'Unsaved settings',
+  'settings.unsaved.discard': 'Discard changes',
+  'settings.saving': 'Saving…',
+  'settings.leave.title': 'Unsaved settings changes',
+  'settings.leave.body': 'Leaving settings discards the unsaved changes. You can save and leave, or discard this edit.',
+  'settings.leave.save': 'Save and leave',
+  'settings.leave.discard': 'Discard changes',
+  'settings.leave.stay': 'Keep editing',
+  'settings.root.change.title': 'Change the requirements root?',
+  'settings.root.change.body': 'The requirements root changes from {old} to {new}.',
+  'settings.root.change.impact': 'After the change, requirements under the old root are no longer listed; the files themselves are not deleted.',
+  'settings.worktree.change.title': 'Change the worktree root?',
+  'settings.worktree.change.body': 'The worktree root changes from {old} to {new} (empty means the default directory).',
+  'settings.worktree.change.impact': 'After the change, worktrees under the old root are no longer listed; the directories and branches are not deleted.',
+  'settings.pathChange.confirm': 'Confirm change',
+  'settings.reviewTemplate.invalid': 'The review prompt template must include the {taskId} placeholder.',
+  'settings.commitTemplate.invalid': 'The commit prompt template must include the {taskId}, {changedFiles} and {diffText} placeholders.',
+  'settings.git.desc': 'This commits requirement documents in the requirements-root repository and is independent from AI commits of the project repository.',
+  'settings.git.changesCount': '{count} files changed',
+  'settings.git.committing': 'Committing…',
+  'settings.git.committed': 'Requirement document changes committed',
+  'settings.git.initSuccess': 'Git repository initialized',
+  'settings.git.messageEmpty': 'Enter a commit message first.',
+  'settings.git.confirm.title': 'Commit all requirement changes?',
+  'settings.git.confirm.body': 'This commits every change in the requirements-root repository ({count} files), not the project code.',
+  'settings.git.confirm.action': 'Confirm commit',
+  'settings.git.confirm.message': 'Commit message: {message}',
+  'settings.git.confirm.files': 'Changed files ({count})',
+  'settings.git.confirm.more': '{count} more files…',
+
+  /* LinkView */
+  'link.session': 'Linking session: {name}',
+  'link.search': 'Search requirements (title / ID)…',
+  'link.search.empty': 'No matching requirements',
+  'link.groupCount': '{count} requirements',
+  'link.totalCount': '{count} linkable requirements',
+  'link.busy': 'Linking…',
+
+  /* Session header action */
+  'session.action.error': 'Failed to read the session link: {message} (click to retry)',
+}

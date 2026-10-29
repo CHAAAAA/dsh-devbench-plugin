@@ -1,0 +1,92 @@
+{
+  "name": "dsh-devbench-plugin",
+  "version": "1.0.1",
+  "description": "DSH DevBench 插件：按工作区管理 Markdown 需求，AI 提交与代码评审，Git 工作树、后台任务与周报",
+  "type": "module",
+  "main": "index.js",
+  "icon": "icon.svg",
+  "license": "MIT",
+  "author": "wangyc",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CHAAAAA/dsh-devbench-plugin.git"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "devbench",
+    "requirements",
+    "project-management",
+    "markdown"
+  ],
+  "engines": {
+    "node": ">=20.18.1",
+    "dsh": ">=0.2.1-rc.3 <0.3.0-0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./dist/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "dist/client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "src/host",
+    "src/shared",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-api-session-controller"
+      ]
+    },
+    "manifestVersion": 1
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "prepare": "npm run build",
+    "pretest": "npm run build",
+    "test": "node --test test/host/*.test.js test/client/*.test.mjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "messages:check": "node scripts/check-messages.cjs",
+    "check": "npm run lint && npm run messages:check && npm test",
+    "verify:publish": "node scripts/release/preflight.mjs",
+    "release:preflight": "node scripts/release/preflight.mjs",
+    "release:pack": "node scripts/release/pack.mjs",
+    "release:publish": "node scripts/release/publish.mjs",
+    "release:catalog": "node scripts/release/catalog.mjs",
+    "release:smoke": "node scripts/release/smoke-install.mjs",
+    "prepack": "npm run build && node scripts/release/preflight.mjs",
+    "prepublishOnly": "node scripts/release/preflight.mjs --publish"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0"
+  }
+}

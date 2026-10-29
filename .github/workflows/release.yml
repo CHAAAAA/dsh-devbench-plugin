@@ -1,0 +1,89 @@
+name: Release
+
+# Push a tag to publish: `git tag -a v1.0.1 -m "release: v1.0.1" && git push origin v1.0.1`
+# Required repository secret: NPM_TOKEN (an npm automation token with publish rights).
+# Optional environment protection: attach the `npm-publish` environment to this job.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify tag matches package version
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "v${VERSION}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version v${VERSION}"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint, test, and build
+        run: npm run check
+
+      - name: Release preflight (publish mode)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm run release:preflight -- --publish --allow-existing-tag
+
+      - name: Pack tarball
+        run: npm run release:pack
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="latest"
+          case "$VERSION" in
+            *-*) TAG="next" ;;
+          esac
+          npm publish dist/release/*.tgz --access public --tag "$TAG" --ignore-scripts --provenance
+          echo "published dsh-devbench-plugin@${VERSION} with dist-tag ${TAG}"
+
+      - name: Generate plugin market index
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          GENERATED=0
+          for attempt in 1 2 3 4 5; do
+            if npm run release:catalog; then GENERATED=1; break; fi
+            echo "registry metadata not ready yet, retrying in 10s (${attempt}/5)"
+            sleep 10
+          done
+          if [ "$GENERATED" != "1" ]; then
+            echo "::warning::could not generate the market index; run npm run release:catalog locally"
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILES="dist/release/*.tgz dist/release/manifest.json"
+          if [ -f dist/catalog/index.json ]; then FILES="$FILES dist/catalog/index.json"; fi
+          gh release create "${GITHUB_REF_NAME}" $FILES \
+            --title "dsh-devbench-plugin ${GITHUB_REF_NAME}" \
+            --generate-notes
