@@ -38,7 +38,7 @@ export async function mkdirIfMissing(directory) {
   }
 }
 
-export async function atomicWriteFile(file, content) {
+export async function atomicWriteFile(file, content, options) {
   const directory = path.dirname(file)
   await fsp.mkdir(directory, { recursive: true })
   const suffix = process.pid + '-' + randomBytes(6).toString('hex')
@@ -46,6 +46,7 @@ export async function atomicWriteFile(file, content) {
   let handle = null
   try {
     handle = await fsp.open(temp, 'wx')
+    if (options && typeof options.mode === 'number') await handle.chmod(options.mode)
     await handle.writeFile(content)
     await handle.sync()
     await handle.close()

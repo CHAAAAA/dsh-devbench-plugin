@@ -7,7 +7,7 @@ export function ProjectSidebar(props) {
   const [search, setSearch] = useState('')
   const projects = props.projects || []
   const rows = projectRows(projects, search)
-  const homeActive = props.view === 'home'
+  const homeActive = props.view === 'home' || props.view === 'mcp'
   let body
   if (projects.length === 0) {
     body = h('div', { className: 'devbench-empty-panel', style: { margin: '8px' } }, t('project.empty'))

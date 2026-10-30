@@ -20,3 +20,19 @@ export const META_DIR = '.dsh-devbench'
 
 /** Per-user plugin configuration directory, relative to the home directory. */
 export const CONFIG_DIR_NAME = '.dsh-devbench'
+
+/**
+ * MCP server name used by the DSH profile row type managed on the home page.
+ * Kept here because both halves refer to it when listing configured servers.
+ */
+export const MCP_CLIENT_MODULE = '@deepseek-ai/dsh-mcp-client'
+
+/**
+ * Mask rendered instead of secret-looking MCP env/header values. The host
+ * replaces an unchanged mask with the stored value on save; a submitted
+ * literal value replaces the stored one.
+ */
+export const MCP_SECRET_MASK = '\u2022\u2022\u2022\u2022\u2022\u2022'
+
+/** Browser request timeout for MCP save/delete/toggle (the host waits for DSH reload). */
+export const MCP_SAVE_TIMEOUT_MS = 120000

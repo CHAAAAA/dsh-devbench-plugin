@@ -35,6 +35,13 @@ export function IconWorktree() {
     h('circle', { cx: 17.5, cy: 12, r: 2.2 }),
     h('path', { d: 'M6.5 7.2v9.6M8.7 5h3.8a3 3 0 0 1 3 3v1.8' }))
 }
+/** Server stack, used by the MCP management entry and overview panel. */
+export function IconServer(props) {
+  return h(Svg, { size: props && props.size ? props.size : 16 },
+    h('rect', { x: 3.5, y: 4.5, width: 17, height: 6, rx: 2 }),
+    h('rect', { x: 3.5, y: 13.5, width: 17, height: 6, rx: 2 }),
+    h('path', { d: 'M7 7.5h.01M7 16.5h.01' }))
+}
 export function IconFolder() {
   return h(Svg, null, h('path', { d: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z' }))
 }

@@ -26,6 +26,7 @@ import { CommitConfirmModal } from '../../ui/commit-confirm-modal.js'
 import { SettingsView } from '../settings.js'
 import { LinkView } from '../link.js'
 import { HomeView } from '../home.js'
+import { McpView } from '../mcp.js'
 const EMPTY_OVERVIEW = { loading: false, error: '', data: null, key: '' }
 const EMPTY_TASKS = { loading: false, error: '', data: [], key: '' }
 const EMPTY_REVIEW = { loading: false, error: '', data: null, name: '', key: '', meta: null }
@@ -142,6 +143,9 @@ export function ProjectDevbenchPage(props) {
   }
   function openHome() {
     applyView({ view: 'home', selectedRequirement: null }, { history: true })
+  }
+  function openMcp() {
+    applyView({ view: 'mcp', selectedRequirement: null }, { history: true })
   }
   function openTaskSession(sessionId) {
     if (sessionId === undefined || sessionId === null || sessionId === '') return
@@ -1059,9 +1063,16 @@ export function ProjectDevbenchPage(props) {
           onOpenProject: selectProject,
           onOpenSession: openTaskSession,
           onOpenSettings: openSettings,
+          onOpenMcp: openMcp,
           showToast: showToast,
           useSessions: props.useSessions,
         })))
+  } else if (ui.view === 'mcp') {
+    mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
+      h('div', { className: 'devbench-page-head' },
+        h(Breadcrumb, { t: t, items: simpleBreadcrumb(t('breadcrumb.mcp')) })),
+      h('div', { className: 'devbench-tab-body' },
+        h(McpView, { t: t, showToast: showToast })))
   } else if (currentWorkspace === null) {
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },

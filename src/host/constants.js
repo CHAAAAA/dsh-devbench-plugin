@@ -11,6 +11,8 @@ export {
   REQUEST_HEADER,
   META_DIR,
   CONFIG_DIR_NAME,
+  MCP_CLIENT_MODULE,
+  MCP_SECRET_MASK,
 } from '../shared/protocol.js'
 
 export const MAPPING_FILE = 'workspaces.json'
@@ -23,6 +25,19 @@ export const MAX_FILE_TEXT_BYTES = 1024 * 1024
 export const MAX_TITLE_LENGTH = 200
 export const MAX_SESSION_ID_LENGTH = 256
 export const MAX_GIT_MESSAGE_LENGTH = 2000
+
+/** MCP management limits (REQ-20261029-002). */
+export const MCP_SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
+export const MCP_MAX_COMMAND_LENGTH = 4096
+export const MCP_MAX_CWD_LENGTH = 4096
+export const MCP_MAX_URL_LENGTH = 8192
+export const MCP_MAX_ARGS = 256
+export const MCP_MAX_ARG_LENGTH = 4096
+export const MCP_MAX_KV_ENTRIES = 128
+export const MCP_MAX_KV_KEY_LENGTH = 256
+export const MCP_MAX_KV_VALUE_LENGTH = 32768
+export const MCP_MAX_TIMEOUT_MS = 3600000
+export const MCP_PATCH_BACKUP_PREFIX = '.bak-'
 
 export const DEFAULT_PROMPT_TEMPLATE = [
   '你在工作区「{workspaceTitle}」中执行需求「{title}」（需求 ID：{id}）。',

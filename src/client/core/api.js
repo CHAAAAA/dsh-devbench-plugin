@@ -245,3 +245,22 @@ export function retryProjectTask(payload, opts) {
 export function getReviewContent(workspaceId, name, opts) {
   return request('/project/review/content?' + qs({ workspaceId: workspaceId, name: name }), undefined, opts)
 }
+/** List the MCP client servers of the active DSH profile (REQ-20261029-002). */
+export function getMcpServers(opts) {
+  return request('/mcp', undefined, opts)
+}
+/**
+ * Create or update one MCP server row. Saving may wait for the DSH hot reload,
+ * so callers should pass a generous timeout (default request timeout applies).
+ */
+export function saveMcpServer(payload, opts) {
+  return request('/mcp/save', payload, opts)
+}
+/** Delete a profile patch row or disable a bundle-provided MCP server. */
+export function deleteMcpServer(payload, opts) {
+  return request('/mcp/delete', payload, opts)
+}
+/** Enable or disable one MCP server row. */
+export function toggleMcpServer(payload, opts) {
+  return request('/mcp/toggle', payload, opts)
+}

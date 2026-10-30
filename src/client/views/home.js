@@ -7,7 +7,8 @@ import { Banner, formatTime, formatShortTime } from '../ui/common.js'
 import { ListFooter, useListPage } from '../ui/list-page.js'
 import { useEmptySessions } from '../ui/session-row.js'
 import { renderMarkdown } from '../ui/markdown.js'
-import { IconRefresh, IconSettings, IconChevron } from '../ui/icons.js'
+import { IconRefresh, IconSettings, IconChevron, IconServer } from '../ui/icons.js'
+import { HomeMcpPanel } from './mcp.js'
 /**
  * Resolve whether a task session still exists. The session list snapshot starts
  * in `pending`; until it is `ready` the id cannot be verified, so the row stays
@@ -193,6 +194,9 @@ export function HomeView(props) {
   }
   function openSettings() {
     if (typeof props.onOpenSettings === 'function') props.onOpenSettings()
+  }
+  function openMcp() {
+    if (typeof props.onOpenMcp === 'function') props.onOpenMcp()
   }
   function loadDashboard(silent) {
     const seq = ++dashboardSeqRef.current
@@ -410,6 +414,8 @@ export function HomeView(props) {
     h('div', { className: 'devbench-inline' },
       h('button', { className: 'devbench-btn', onClick: reloadDashboard },
         h(IconRefresh, { size: 15 }), t('home.refresh')),
+      h('button', { className: 'devbench-btn ghost', onClick: openMcp },
+        h(IconServer, { size: 15 }), t('home.mcp.entry')),
       h('button', { className: 'devbench-btn ghost', onClick: openSettings },
         h(IconSettings, { size: 15 }), t('panel.settings'))))
   const dashboardError = dashboard.error
@@ -435,5 +441,7 @@ export function HomeView(props) {
     data !== null ? h('div', null, statsGrid, weekNote, emptyHint) : null,
     h('div', { className: 'devbench-home-grid' },
       leftColumn,
-      h('div', { className: 'devbench-home-col' }, weeklyPanel)))
+      h('div', { className: 'devbench-home-col' },
+        h(HomeMcpPanel, { t: t, onOpenMcp: props.onOpenMcp }),
+        weeklyPanel)))
 }
