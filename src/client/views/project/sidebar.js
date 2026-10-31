@@ -1,6 +1,6 @@
 import { h, useState } from '../../runtime.js'
 import { projectRows, relativeProjectPath } from '../../core/project-utils.js'
-import { IconPlus, IconRefresh, IconSettings, IconHome } from '../../ui/icons.js'
+import { IconPlus, IconRefresh, IconSettings, IconHome, IconLayoutSidebar } from '../../ui/icons.js'
 import { Banner } from '../../ui/common.js'
 export function ProjectSidebar(props) {
   const t = props.t
@@ -52,6 +52,12 @@ export function ProjectSidebar(props) {
   return h('aside', { className: 'devbench-projects' },
     h('div', { className: 'devbench-projects-head' },
       h('div', { className: 'devbench-projects-title' }, t('project.title')),
+      h('button', {
+        className: 'devbench-icon-btn',
+        title: t('project.sidebar.collapse'),
+        'aria-label': t('project.sidebar.collapse'),
+        onClick: props.onCollapse,
+      }, h(IconLayoutSidebar, { size: 15 })),
       h('button', {
         className: 'devbench-icon-btn', title: t('project.refresh'),
         onClick: props.onRefresh,

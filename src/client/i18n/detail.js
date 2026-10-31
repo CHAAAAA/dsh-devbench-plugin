@@ -1,5 +1,7 @@
 /** Requirement detail / master-detail dictionaries (merged in i18n.js). Keys must exist in both languages. */
 export const zh = {
+  'project.sidebar.collapse': '收起项目栏',
+  'project.sidebar.expand': '展开项目栏',
   'detail.list.title': '需求',
   'detail.list.count': '{count} 个',
   'detail.list.filterStatus': '状态筛选',
@@ -56,6 +58,8 @@ export const zh = {
 }
 
 export const en = {
+  'project.sidebar.collapse': 'Collapse project sidebar',
+  'project.sidebar.expand': 'Expand project sidebar',
   'detail.list.title': 'Requirements',
   'detail.list.count': '{count}',
   'detail.list.filterStatus': 'Filter by status',
@@ -110,3 +114,82 @@ export const en = {
   'detail.files.deleteBusy': 'Deleting...',
   'project.requirements.deleteBlockedActive': 'This requirement has a running task and cannot be deleted right now.',
 }
+
+zh['markdown.mode.edit'] = '编辑'
+zh['markdown.mode.split'] = '分栏'
+zh['markdown.mode.preview'] = '预览'
+zh['markdown.toolbar.heading1'] = '一级标题（# 标题）'
+zh['markdown.toolbar.heading2'] = '二级标题（## 标题）'
+zh['markdown.toolbar.heading3'] = '三级标题（### 标题）'
+zh['markdown.toolbar.bold'] = '粗体（**文本**）'
+zh['markdown.toolbar.italic'] = '斜体（*文本*）'
+zh['markdown.toolbar.bullet'] = '无序列表（- 项目）'
+zh['markdown.toolbar.ordered'] = '有序列表（1. 项目）'
+zh['markdown.toolbar.quote'] = '引用（> 文本）'
+zh['markdown.toolbar.code'] = '行内代码（`代码`）'
+zh['markdown.toolbar.codeBlock'] = '代码块（``` 代码 ```）'
+zh['markdown.toolbar.link'] = '链接（[文本](https://)）'
+zh['markdown.toolbar.divider'] = '分割线（---）'
+zh['markdown.toolbar.help'] = 'Markdown 语法提示'
+zh['markdown.hint'] = '支持 Markdown：⌘/Ctrl+B 粗体、⌘/Ctrl+I 斜体、⌘/Ctrl+K 链接、⌘/Ctrl+S 保存。'
+zh['markdown.preview.empty'] = '开始输入内容后在此实时预览。'
+zh['markdown.linkPlaceholder'] = '链接文本'
+zh['markdown.editor.aria'] = '需求正文 Markdown 编辑器'
+zh['markdown.openPopup'] = '弹出编辑'
+zh['markdown.popup.title'] = '编辑需求正文'
+zh['markdown.popup.close'] = '关闭'
+zh['markdown.popup.save'] = '保存并关闭'
+zh['markdown.popup.fullscreen'] = '全屏编辑'
+zh['markdown.popup.exitFullscreen'] = '退出全屏'
+zh['markdown.help.title'] = 'Markdown 语法'
+zh['markdown.help.intro'] = '支持以下常用 Markdown 语法；工具栏按钮可直接插入语法。'
+zh['markdown.help.heading'] = '标题'
+zh['markdown.help.bold'] = '粗体'
+zh['markdown.help.italic'] = '斜体'
+zh['markdown.help.code'] = '行内代码'
+zh['markdown.help.codeBlock'] = '代码块'
+zh['markdown.help.bullet'] = '无序列表'
+zh['markdown.help.ordered'] = '有序列表'
+zh['markdown.help.quote'] = '引用'
+zh['markdown.help.link'] = '链接'
+zh['markdown.help.divider'] = '分割线'
+zh['detail.editor.done'] = '完成'
+en['markdown.mode.edit'] = 'Edit'
+en['markdown.mode.split'] = 'Split'
+en['markdown.mode.preview'] = 'Preview'
+en['markdown.toolbar.heading1'] = 'Heading 1 (# Heading)'
+en['markdown.toolbar.heading2'] = 'Heading 2 (## Heading)'
+en['markdown.toolbar.heading3'] = 'Heading 3 (### Heading)'
+en['markdown.toolbar.bold'] = 'Bold (**text**)'
+en['markdown.toolbar.italic'] = 'Italic (*text*)'
+en['markdown.toolbar.bullet'] = 'Bullet list (- item)'
+en['markdown.toolbar.ordered'] = 'Numbered list (1. item)'
+en['markdown.toolbar.quote'] = 'Quote (> text)'
+en['markdown.toolbar.code'] = 'Inline code (`code`)'
+en['markdown.toolbar.codeBlock'] = 'Code block (``` code ```)'
+en['markdown.toolbar.link'] = 'Link ([text](https://))'
+en['markdown.toolbar.divider'] = 'Divider (---)'
+en['markdown.toolbar.help'] = 'Markdown syntax help'
+en['markdown.hint'] = 'Markdown supported: Cmd/Ctrl+B bold, Cmd/Ctrl+I italic, Cmd/Ctrl+K link, Cmd/Ctrl+S save.'
+en['markdown.preview.empty'] = 'Start typing to see a live preview here.'
+en['markdown.linkPlaceholder'] = 'Link text'
+en['markdown.editor.aria'] = 'Requirement body Markdown editor'
+en['markdown.openPopup'] = 'Open popup editor'
+en['markdown.popup.title'] = 'Edit requirement body'
+en['markdown.popup.close'] = 'Close'
+en['markdown.popup.save'] = 'Save and close'
+en['markdown.popup.fullscreen'] = 'Fullscreen editor'
+en['markdown.popup.exitFullscreen'] = 'Exit fullscreen'
+en['markdown.help.title'] = 'Markdown syntax'
+en['markdown.help.intro'] = 'Common Markdown syntax is supported; toolbar buttons insert the syntax for you.'
+en['markdown.help.heading'] = 'Heading'
+en['markdown.help.bold'] = 'Bold'
+en['markdown.help.italic'] = 'Italic'
+en['markdown.help.code'] = 'Inline code'
+en['markdown.help.codeBlock'] = 'Code block'
+en['markdown.help.bullet'] = 'Bullet list'
+en['markdown.help.ordered'] = 'Numbered list'
+en['markdown.help.quote'] = 'Quote'
+en['markdown.help.link'] = 'Link'
+en['markdown.help.divider'] = 'Divider'
+en['detail.editor.done'] = 'Done'

@@ -82,11 +82,33 @@ export function IconReq(props) {
   h('path', { d: 'M8.8 11.6l1.5 1.5 2.7-2.9' }),
   h('path', { d: 'M13.4 13.1h3.1M8.8 16.6h7.7M8.8 19.1h4.8' }))
 }
+/** Sidebar panel with an arrow that points toward the collapse/expand action. */
+export function IconLayoutSidebar(props) {
+  const collapsed = props && props.collapsed === true
+  const size = props && props.size ? props.size : 16
+  return h(Svg, { size: size },
+    h('rect', { x: 3.5, y: 4.5, width: 17, height: 15, rx: 2.5 }),
+    h('path', { d: 'M9 4.5v15' }),
+    h('path', { d: collapsed ? 'M13 9.5l2.5 2.5-2.5 2.5' : 'M15.5 9.5L13 12l2.5 2.5' }))
+}
 /** Workbench panel icon: a left rail plus content area, i.e. the three-pane workbench. */
 export function IconDevbench(props) {
   return h(Svg, { size: props && props.size ? props.size : 18 },
     h('rect', { x: 3.4, y: 4.2, width: 17.2, height: 15.6, rx: 2.6 }),
     h('path', { d: 'M9.6 4.2v15.6' }))
+}
+export function IconEdit() {
+  return h(Svg, null,
+    h('path', { d: 'M4 20h4.2L19 9.2 14.8 5 4 15.8V20z' }),
+    h('path', { d: 'M12.8 7l4.2 4.2' }))
+}
+export function IconMaximize() {
+  return h(Svg, null,
+    h('path', { d: 'M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5' }))
+}
+export function IconMinimize() {
+  return h(Svg, null,
+    h('path', { d: 'M4 9h5V4M20 9h-5V4M15 20v-5h5M9 20v-5H4' }))
 }
 export function IconChevron(props) {
   const path = props.open ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6'

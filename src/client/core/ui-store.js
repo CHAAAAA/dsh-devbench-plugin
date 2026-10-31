@@ -19,6 +19,7 @@ const initial = {
   selectedProjectId: null,
   selectedRequirement: null,
   activeTab: 'overview',
+  projectSidebarVisible: true,
   linkSessionId: null,
   history: [],
   selection: Object.assign({}, EMPTY_SELECTION),

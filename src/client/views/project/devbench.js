@@ -14,7 +14,7 @@ import {
 } from '../../core/project-utils.js'
 import { createTaskRequestGate } from '../../core/task-request-gate.js'
 import { Banner, Breadcrumb, Styles } from '../../ui/common.js'
-import { IconRefresh, IconCode, IconFolder, IconTerminal } from '../../ui/icons.js'
+import { IconRefresh, IconCode, IconFolder, IconTerminal, IconLayoutSidebar } from '../../ui/icons.js'
 import { ProjectSidebar } from './sidebar.js'
 import { ProjectOverview } from './overview.js'
 import { ProjectCommits } from './commits.js'
@@ -95,6 +95,7 @@ export function ProjectDevbenchPage(props) {
   const activeCommitTask = activeTaskList.find(function (task) { return task.kind === 'commit' }) || null
   activeTasksRef.current = activeTaskList
   const activeTab = ui.activeTab || 'overview'
+  const sidebarVisible = ui.projectSidebarVisible !== false
   const awaitingCommitTask = findAwaitingCommitTask(effectiveTaskList)
   function showToast(kind, text, options) { return pushToast(kind, text, options) }
   function applyView(patch, options) {
@@ -105,6 +106,9 @@ export function ProjectDevbenchPage(props) {
     }
     navigateView(patch, options).catch(function () {})
     return false
+  }
+  function setSidebarVisible(visible) {
+    uiStore.set({ projectSidebarVisible: visible })
   }
   function selectProject(workspaceId) {
     const current = uiStore.state.selectedProjectId
@@ -1138,17 +1142,28 @@ export function ProjectDevbenchPage(props) {
         h(Banner, { kind: 'error' }, state.error),
         h('button', { className: 'devbench-btn', onClick: refreshAll }, t('panel.retry'))))
   } else {
-    content = h('div', { className: 'devbench-workbench' },
-      h(Styles),
-      h(ProjectSidebar, {
+    content = h('div', {
+      className: 'devbench-workbench' + (sidebarVisible ? '' : ' sidebar-hidden'),
+    },
+    h(Styles),
+    sidebarVisible
+      ? h(ProjectSidebar, {
         t: t, projects: projects,
         selectedProjectId: selectedProjectId,
         view: ui.view,
         adding: addBusy, addError: addError,
         onSelect: selectProject, onAdd: addProject, onRefresh: refreshAll, onSettings: openSettings,
         onHome: openHome,
-      }),
-      mainPane)
+        onCollapse() { setSidebarVisible(false) },
+      })
+      : h('button', {
+        className: 'devbench-sidebar-reveal',
+        type: 'button',
+        title: t('project.sidebar.expand'),
+        'aria-label': t('project.sidebar.expand'),
+        onClick() { setSidebarVisible(true) },
+      }, h(IconLayoutSidebar, { size: 15, collapsed: true })),
+    mainPane)
   }
   return h(getFragment(), null, content, commitModalElement,
     h(ToastHost, { key: 'toasts' }),

@@ -118,7 +118,7 @@ export function Modal(props) {
       if (event.target === event.currentTarget && props.closeOnOverlay !== false) closeRef.current()
     },
   }, h('div', {
-    className: 'devbench-modal' + (props.size === 'lg' ? ' devbench-modal-lg' : ''),
+    className: 'devbench-modal' + (props.size ? ' devbench-modal-' + props.size : ''),
     role: 'dialog',
     'aria-modal': 'true',
     'aria-label': props.title,
@@ -127,6 +127,9 @@ export function Modal(props) {
   },
   h('div', { className: 'devbench-modal-head' },
     h('div', { className: 'devbench-modal-title' }, props.title),
+    props.headerActions
+      ? h('div', { className: 'devbench-modal-head-actions' }, props.headerActions)
+      : null,
     showClose
       ? h('button', {
         className: 'devbench-modal-close',

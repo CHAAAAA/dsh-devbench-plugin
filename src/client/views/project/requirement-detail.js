@@ -12,7 +12,11 @@ import { Banner, Modal, formatTime, formatShortTime } from '../../ui/common.js'
 import { FileTree } from '../../ui/file-tree.js'
 import { SessionRow, useEmptySessions } from '../../ui/session-row.js'
 import { renderMarkdown } from '../../ui/markdown.js'
-import { IconBack, IconPlay, IconFolder, IconTrash, IconPlus, IconExternal, IconLink } from '../../ui/icons.js'
+import { MarkdownEditor, MarkdownHelp } from '../../ui/markdown-editor.js'
+import {
+  IconBack, IconPlay, IconFolder, IconTrash, IconPlus, IconExternal, IconLink,
+  IconEdit, IconMaximize, IconMinimize,
+} from '../../ui/icons.js'
 function selectSessionsSnapshot(snapshot) { return snapshot }
 const EMPTY_FILES = { loading: false, error: '', data: null, seq: 0 }
 const EMPTY_WORKTREE = { enabled: false, exists: false, path: '', branch: '', base: '' }
@@ -94,6 +98,9 @@ export function DetailView(props) {
   const [removeWorktreeOpen, setRemoveWorktreeOpen] = useState(false)
   const [removeWorktreeBusy, setRemoveWorktreeBusy] = useState(false)
   const [removeWorktreeError, setRemoveWorktreeError] = useState('')
+  const [markdownModalOpen, setMarkdownModalOpen] = useState(false)
+  const [markdownModalFullscreen, setMarkdownModalFullscreen] = useState(false)
+  const [markdownHelpOpen, setMarkdownHelpOpen] = useState(false)
   const queueRef = useRef(null)
   if (!queueRef.current) queueRef.current = createSerialQueue()
   const pendingRef = useRef(0)
@@ -249,6 +256,9 @@ export function DetailView(props) {
       setTitleDraft(incomingTitle)
       setBodyDraft(incomingBody)
       setEditing(false)
+      setMarkdownModalOpen(false)
+      setMarkdownModalFullscreen(false)
+      setMarkdownHelpOpen(false)
       setTab('doc')
       setConflict(false)
       setError('')
@@ -573,6 +583,30 @@ export function DetailView(props) {
         setEditing(false)
       }
     }).catch(noop)
+  }
+  function openMarkdownModal() {
+    setMarkdownModalOpen(true)
+  }
+  function closeMarkdownModal() {
+    if (savingRef.current) return
+    setMarkdownModalOpen(false)
+    setMarkdownModalFullscreen(false)
+  }
+  function toggleMarkdownFullscreen() {
+    setMarkdownModalFullscreen(markdownModalFullscreen === false)
+  }
+  function saveMarkdownModal() {
+    if (savingRef.current) return Promise.resolve(false)
+    if (dirtyRef.current === false) {
+      closeMarkdownModal()
+      return Promise.resolve(true)
+    }
+    return saveDocument({ refresh: true }).then(function (saved) {
+      if (saved === true) closeMarkdownModal()
+      return saved
+    }, function () {
+      return false
+    })
   }
   function requestLeave() {
     if (savingRef.current) {
@@ -1072,40 +1106,44 @@ export function DetailView(props) {
     detailTabButton('doc', t('detail.requirement')),
     detailTabButton('files', t('detail.files') + ' (' +
       (filesState.data ? filesState.data.entries.filter(function (item) { return !item.isRequirementDoc }).length : '...') + ')'))
+  const markdownEditorProps = {
+    t: t,
+    value: bodyDraft,
+    disabled: hardDisabled,
+    ariaLabel: t('markdown.editor.aria'),
+    onChange(value) {
+      setBodyDraft(value)
+      markDirty(titleRef.current, value)
+    },
+    onSave() { saveDocument().catch(noop) },
+    onOpenHelp() { setMarkdownHelpOpen(true) },
+  }
   const docTab = h('div', null,
     h('div', { className: 'devbench-section' },
-      h('div', { className: 'devbench-inline', style: { marginBottom: '8px' } },
-        h('div', { className: 'devbench-tabs', style: { margin: 0 } },
-          h('button', {
-            className: 'devbench-tab' + (editing ? ' active' : ''),
+      h('div', { className: 'devbench-inline', style: { marginBottom: '8px', gap: '8px', flexWrap: 'wrap' } },
+        editing
+          ? null
+          : h('button', {
+            className: 'devbench-tab active',
             onClick() { setEditing(true) },
           }, t('detail.edit')),
-          h('button', {
-            className: 'devbench-tab' + (editing ? '' : ' active'),
-            onClick: exitEditing,
-          }, t('detail.preview'))),
         h('span', { style: { flex: 1 } }),
+        h('button', {
+          className: 'devbench-btn',
+          onClick: openMarkdownModal,
+        }, h(IconEdit, { size: 14 }), t('markdown.openPopup')),
+        editing
+          ? h('button', {
+            className: 'devbench-btn ghost',
+            onClick: exitEditing,
+          }, t('detail.editor.done'))
+          : null,
         h('span', { className: 'devbench-hint' }, t('detail.saveHint'))),
       editing
-        ? h('textarea', {
-          className: 'devbench-textarea devbench-mono',
-          style: { minHeight: '320px', height: '48vh' },
-          value: bodyDraft,
-          disabled: hardDisabled,
-          onChange(event) {
-            setBodyDraft(event.target.value)
-            markDirty(titleRef.current, event.target.value)
-          },
-          onKeyDown(event) {
-            if ((event.metaKey || event.ctrlKey) && event.key === 's') {
-              event.preventDefault()
-              if (!saving) saveDocument().catch(noop)
-            } else if (event.key === 'Escape') {
-              event.preventDefault()
-              exitEditing()
-            }
-          },
-        })
+        ? h(MarkdownEditor, Object.assign({}, markdownEditorProps, {
+          height: '48vh',
+          onEscape: exitEditing,
+        }))
         : h('div', { className: 'devbench-md' }, renderMarkdown(bodyDraft))),
     h('div', {
       className: 'devbench-inline',
@@ -1379,6 +1417,68 @@ export function DetailView(props) {
       commitPicker.error ? h(Banner, { kind: 'error' }, commitPicker.error) : null,
       pickerBody))
   }
+  const markdownHelpElement = markdownHelpOpen
+    ? h(Modal, {
+      t: t,
+      title: t('markdown.help.title'),
+      size: 'lg',
+      actions: false,
+      onCancel() { setMarkdownHelpOpen(false) },
+      onClose() { setMarkdownHelpOpen(false) },
+    }, h(MarkdownHelp, { t: t }))
+    : null
+  const markdownPopupHeight = markdownModalFullscreen
+    ? 'calc(100vh - 310px)'
+    : 'min(52vh, 520px)'
+  const markdownModalElement = markdownModalOpen
+    ? h(Modal, {
+      t: t,
+      title: t('markdown.popup.title'),
+      size: markdownModalFullscreen ? 'fullscreen' : 'xl',
+      headerActions: h('button', {
+        className: 'devbench-icon-btn',
+        type: 'button',
+        title: markdownModalFullscreen
+          ? t('markdown.popup.exitFullscreen')
+          : t('markdown.popup.fullscreen'),
+        'aria-label': markdownModalFullscreen
+          ? t('markdown.popup.exitFullscreen')
+          : t('markdown.popup.fullscreen'),
+        onClick: toggleMarkdownFullscreen,
+      }, markdownModalFullscreen
+        ? h(IconMinimize, { size: 15 })
+        : h(IconMaximize, { size: 15 })),
+      onCancel: closeMarkdownModal,
+      onClose: closeMarkdownModal,
+      cancelText: t('markdown.popup.close'),
+      confirmText: saving ? t('detail.saving') : t('markdown.popup.save'),
+      confirmDisabled: saving || hardDisabled,
+      onConfirm: saveMarkdownModal,
+    }, h('div', { className: 'devbench-md-modal-body' },
+      error ? h(Banner, { kind: 'error' }, error) : null,
+      h('label', { className: 'devbench-field' },
+        h('span', { className: 'devbench-hint' }, t('detail.title')),
+        h('input', {
+          className: 'devbench-input',
+          value: titleDraft,
+          disabled: hardDisabled,
+          'aria-label': t('detail.title'),
+          onChange(event) {
+            setTitleDraft(event.target.value)
+            markDirty(event.target.value, bodyRef.current)
+          },
+          onKeyDown(event) {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              saveMarkdownModal().catch(noop)
+            }
+          },
+        })),
+      h(MarkdownEditor, Object.assign({}, markdownEditorProps, {
+        height: markdownPopupHeight,
+        onSave: function () { saveMarkdownModal().catch(noop) },
+      }))))
+    : null
   const recoverBanner = recoverDraft !== null
     ? h(Banner, { kind: 'info' },
       h('div', { className: 'devbench-inline', style: { flexWrap: 'wrap', gap: '8px' } },
@@ -1444,5 +1544,7 @@ export function DetailView(props) {
     fileModalElement,
     deleteRequirementElement,
     removeWorktreeElement,
-    commitPickerElement)
+    commitPickerElement,
+    markdownHelpElement,
+    markdownModalElement)
 }
