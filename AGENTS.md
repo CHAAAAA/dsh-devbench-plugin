@@ -72,6 +72,7 @@ Client: entry → plugin → views → ui → core → runtime
 
 - 只维护 `README.md`（产品与使用）和 `AGENTS.md`（协作与开发）；不新增 `docs/`、CHANGELOG、设计文档、验证记录等第三份文档，也不引用已删除的文档。
 - 用户可见行为变化必须同步 README，包括功能、设置、数据位置、错误提示和安装方式。README 随 npm 包发布，AGENTS.md 不打包。
+- 版本号升级时同步更新所有文档中的版本表述：README 版本表、安装/迁移命令（`@<version>`）与 tarball 文件名示例等，避免文档版本与 `package.json.version` 不一致；`package.json.version` 是唯一版本来源。
 - 本文件只记录长期有效的规则；合并重复内容，避免维护文件数量、完整目录树与脚本实现细节。
 - 用户要求提交时，使用中文 Conventional Commits：`<type>(<scope>): <简短摘要>`，并添加 `Co-authored-by: Codex <codex@pku.edu.cn>`。一个提交只做一件事；PR 说明改动、原因、验证与兼容影响。
 - 用户要求新建分支时，从 `main` 创建 `feat/<topic>`、`fix/<topic>`、`docs/<topic>`、`refactor/<topic>` 或 `release/<version>`；遵循用户指定的分支名。

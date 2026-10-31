@@ -5,7 +5,7 @@
 | 项 | 值 |
 | --- | --- |
 | 包名 | `dsh-devbench-plugin` |
-| 版本 | **1.0.1** |
+| 版本 | **1.0.3** |
 | DSH 兼容 | `>=0.2.1-rc.3 <0.3.0-0` |
 | Node.js | ≥ 20.18.1（推荐 24.x，CI 与 DSH Desktop 均使用 24） |
 | 许可证 | MIT |
@@ -39,14 +39,14 @@
 
 1. 打开 DSH →「插件」页（不同版本可能在侧边栏；部分版本在「设置 → 插件」）。
 2. 点「添加插件」。
-3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.1`。
+3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.3`。
 4. 等待安装完成，点「立即启用」。
 5. 如果界面提示需要重启，**完全退出并重新打开 DSH**（不是只关窗口）。
 
 ### 2.2 CLI
 
 ```sh
-dsh plugin --profile web add dsh-devbench-plugin@1.0.1
+dsh plugin --profile web add dsh-devbench-plugin@1.0.3
 dsh plugin --profile web list
 dsh --profile web --dump-config | grep -A3 devbench-manager
 ```
@@ -55,14 +55,14 @@ Desktop profile 由 Electron 管理：先完全退出 DSH，再使用 Desktop �
 
 ```sh
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add dsh-devbench-plugin@1.0.1
+  plugin --profile desktop add dsh-devbench-plugin@1.0.3
 ```
 
 ### 2.3 离线 tarball
 
 ```sh
 npm run release:pack      # 在仓库内构建 dist/release/*.tgz
-dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.1.tgz
+dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.3.tgz
 ```
 
 也可以在插件页「添加插件」中直接输入 tarball 绝对路径。保留 tarball 原文件：profile 依赖会记录 `file:` 绝对路径。
@@ -79,10 +79,10 @@ v1.0.1 renames the package from `dsh-workbench-plugin` to `dsh-devbench-plugin` 
 
 ```sh
 dsh plugin --profile web remove dsh-workbench-plugin
-dsh plugin --profile web add dsh-devbench-plugin@1.0.1
+dsh plugin --profile web add dsh-devbench-plugin@1.0.3
 ```
 
-- **已安装旧版的用户**：插件页移除旧版 →「添加插件」输入 `dsh-devbench-plugin@1.0.1` → 启用 → 完全退出并重新打开 DSH。
+- **已安装旧版的用户**：插件页移除旧版 →「添加插件」输入 `dsh-devbench-plugin@1.0.3` → 启用 → 完全退出并重新打开 DSH。
 - **本地 link 开发**：先移除 profile 中的旧包名记录（`plugin --profile desktop remove <旧包名>`），再以新仓库目录重新 `add`，详见 4.3。
 - **数据不受影响**：配置、需求文档、任务记录、Git 仓库与 `.dsh-reviews/` 评审文件全部保留；不需要迁移数据。
 
@@ -186,6 +186,25 @@ npm run release:catalog            # 发布成功后生成市场索引
 - **CI**：`.github/workflows/ci.yml` 在 push/PR 时执行 lint → messages:check → build → test → preflight → pack，并上传 tarball 产物；`.github/workflows/release.yml` 由 `v*` tag 触发，校验 tag 与 `package.json.version` 一致后发布到 npm（需要 `NPM_TOKEN` secret 与 `npm-publish` environment），随后生成市场索引并创建 GitHub Release。
 - **版本**：`package.json.version` 是唯一版本来源；版本历史以 git tag（`v*`）和 GitHub Release 记录。
 - **市场索引**：`npm run release:catalog -- --local` 可在发布前预览，`-- --check` 校验；把 `dist/catalog/index.json` 托管为 HTTPS 后，用户在 DSH「插件 → 发现 → 索引源」中添加该 URL 即可搜索安装。
+
+```sh
+# 1) 升版本，同时修正 package-lock.json（npm version 两处都会改）
+npm version 1.x.x --no-git-tag-version
+
+# 2) 本地验证（与 CI 等价）
+npm run check
+npm run release:preflight -- --publish --registry-check --no-auth-check
+#    --publish 要求工作树干净，所以先 commit 再跑这条
+
+# 3) 提交并推送（版本改动单独一个提交）
+git add package.json package-lock.json
+git commit -m "chore(release): 将版本号升级至 1.x.x"
+git push origin main
+
+# 4) 打 annotated tag 并推送（tag 名必须是 v + package.json 版本）
+git tag -a v1.x.x -m "release: dsh-devbench-plugin@1.x.x"
+git push origin v1.x.x
+```
 
 > 更细的分层约束、硬性约束、测试要求、提交/分支规范、发布检查项与常见坑，统一见 [AGENTS.md](AGENTS.md)。
 
