@@ -547,8 +547,9 @@ export function DetailView(props) {
     if (savingRef.current || executeBusyRef.current || pendingRef.current > 0) return Promise.resolve(false)
     const title = currentTitleValid()
     if (title === null) return Promise.resolve(false)
+    // REQ-20261031-003: saving never leaves the editing state by itself; the
+    // explicit Done / Save-and-close controls are the only ways out.
     return saveFields({ title: title, body: bodyRef.current }, { refresh: opts.refresh }).then(function () {
-      if (dirtyRef.current === false) setEditing(false)
       return true
     }, function () {
       return false
@@ -603,6 +604,17 @@ export function DetailView(props) {
     }
     return saveDocument({ refresh: true }).then(function (saved) {
       if (saved === true) closeMarkdownModal()
+      return saved
+    }, function () {
+      return false
+    })
+  }
+  /** REQ-20261031-003: keep the popup open after Cmd+S / Enter; saving feedback via toast. */
+  function saveMarkdownEditor() {
+    if (savingRef.current) return Promise.resolve(false)
+    if (dirtyRef.current === false) return Promise.resolve(true)
+    return saveDocument({ refresh: true }).then(function (saved) {
+      if (saved === true) pushToast('info', t('detail.saved'))
       return saved
     }, function () {
       return false
@@ -1470,13 +1482,13 @@ export function DetailView(props) {
           onKeyDown(event) {
             if (event.key === 'Enter') {
               event.preventDefault()
-              saveMarkdownModal().catch(noop)
+              saveMarkdownEditor().catch(noop)
             }
           },
         })),
       h(MarkdownEditor, Object.assign({}, markdownEditorProps, {
         height: markdownPopupHeight,
-        onSave: function () { saveMarkdownModal().catch(noop) },
+        onSave: function () { saveMarkdownEditor().catch(noop) },
       }))))
     : null
   const recoverBanner = recoverDraft !== null
