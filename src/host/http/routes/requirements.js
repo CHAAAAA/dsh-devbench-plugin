@@ -19,6 +19,7 @@ import {
   deleteRequirement,
   findLinkedRequirement,
   removeRequirementCommit,
+  setRequirementFavorite,
   toSummary,
   updateRequirement,
 } from '../../domain/requirements.js'
@@ -145,6 +146,22 @@ requirementRoutes.push({
     const saved = await updateRequirement(found, function () {
       return { meta: metaPatch, body: nextBody }
     }, { expectedUpdatedAt, force })
+    return {
+      requirement: toSummary(saved.meta, found.folderPath, identity.workspaceId),
+    }
+  },
+})
+
+requirementRoutes.push({
+  method: 'POST',
+  path: '/requirement/favorite',
+  async handle(context) {
+    const root = requireRoot(context.config)
+    const body = await context.readBody()
+    const identity = readIdentity(body)
+    const favorite = readBooleanField(body, 'favorite', true)
+    const found = await requireRequirement(root, identity.workspaceId, identity.id)
+    const saved = await setRequirementFavorite(found, favorite)
     return {
       requirement: toSummary(saved.meta, found.folderPath, identity.workspaceId),
     }

@@ -129,6 +129,7 @@ test('title scope matches title and id case-insensitively and ignores body match
       status: 'new',
       updatedAt: FIXED_TIME,
       worktree: false,
+      favorite: false,
       match: { field: 'title', snippet: '' },
     }])
 

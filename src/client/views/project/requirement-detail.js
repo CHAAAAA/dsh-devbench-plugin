@@ -15,7 +15,7 @@ import { renderMarkdown } from '../../ui/markdown.js'
 import { MarkdownEditor, MarkdownHelp } from '../../ui/markdown-editor.js'
 import {
   IconBack, IconPlay, IconFolder, IconTrash, IconPlus, IconExternal, IconLink,
-  IconEdit, IconMaximize, IconMinimize,
+  IconEdit, IconMaximize, IconMinimize, IconStar,
 } from '../../ui/icons.js'
 function selectSessionsSnapshot(snapshot) { return snapshot }
 const EMPTY_FILES = { loading: false, error: '', data: null, seq: 0 }
@@ -101,6 +101,7 @@ export function DetailView(props) {
   const [markdownModalOpen, setMarkdownModalOpen] = useState(false)
   const [markdownModalFullscreen, setMarkdownModalFullscreen] = useState(false)
   const [markdownHelpOpen, setMarkdownHelpOpen] = useState(false)
+  const [favoriteBusy, setFavoriteBusy] = useState(false)
   const queueRef = useRef(null)
   if (!queueRef.current) queueRef.current = createSerialQueue()
   const pendingRef = useRef(0)
@@ -122,6 +123,7 @@ export function DetailView(props) {
   const fileBusyRef = useRef(false)
   const worktreeBusyRef = useRef(false)
   const removeWorktreeBusyRef = useRef(false)
+  const favoriteBusyRef = useRef(false)
   const guardRef = useRef(null)
   const draftTimerRef = useRef(null)
   fileDirtyRef.current = fileDirty
@@ -880,6 +882,24 @@ export function DetailView(props) {
       setDeleteError(errorText(err))
     })
   }
+  function toggleFavorite() {
+    if (favoriteBusyRef.current || !data) return
+    if (typeof sel.id !== 'string' || sel.id === '') return
+    const nextFavorite = !(data.requirement && data.requirement.favorite === true)
+    favoriteBusyRef.current = true
+    setFavoriteBusy(true)
+    api.setRequirementFavorite({
+      workspaceId: sel.workspaceId, id: sel.id, favorite: nextFavorite,
+    }).then(function () {
+      favoriteBusyRef.current = false
+      setFavoriteBusy(false)
+      refreshDetailsNonBlocking()
+    }, function (err) {
+      favoriteBusyRef.current = false
+      setFavoriteBusy(false)
+      pushToast('error', errorText(err))
+    })
+  }
   function refreshDetailAfterWorktree() {
     reloadDetail().catch(function () { pushToast('error', t('common.refreshFailed')) })
     reloadState().catch(function () { pushToast('error', t('common.refreshFailed')) })
@@ -1071,6 +1091,19 @@ export function DetailView(props) {
           statusSelect,
           saveStateView)),
       h('div', { className: 'devbench-page-actions' },
+        h('button', {
+          className: 'devbench-icon-btn' + (summary.favorite === true ? ' active' : ''),
+          type: 'button',
+          title: summary.favorite === true
+            ? t('project.requirements.unfavorite')
+            : t('project.requirements.favorite'),
+          'aria-label': summary.favorite === true
+            ? t('project.requirements.unfavorite')
+            : t('project.requirements.favorite'),
+          'aria-pressed': summary.favorite === true,
+          disabled: hardDisabled || favoriteBusy,
+          onClick: toggleFavorite,
+        }, h(IconStar, { size: 15, filled: summary.favorite === true })),
         h('button', {
           className: 'devbench-icon-btn',
           title: t('detail.files.upload'),

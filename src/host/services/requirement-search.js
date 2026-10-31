@@ -131,6 +131,7 @@ function toSearchItem(record, match) {
     status: summary.status,
     updatedAt: summary.updatedAt,
     worktree: summary.worktree === true,
+    favorite: summary.favorite === true,
     match: match,
   }
 }

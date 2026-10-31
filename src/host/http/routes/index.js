@@ -1,6 +1,7 @@
 /** Aggregated route table. */
 import { configRoutes } from './config.js'
 import { dashboardRoutes } from './dashboard.js'
+import { documentRoutes } from './documents.js'
 import { fileRoutes } from './files.js'
 import { gitRoutes } from './git.js'
 import { mcpRoutes } from './mcp.js'
@@ -12,6 +13,7 @@ export const routes = [
   ...configRoutes,
   ...dashboardRoutes,
   ...requirementRoutes,
+  ...documentRoutes,
   ...projectRoutes,
   ...projectWorktreeRoutes,
   ...fileRoutes,

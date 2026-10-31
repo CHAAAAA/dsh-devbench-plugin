@@ -1,6 +1,7 @@
 /** Single source of truth for IDs, paths, realpath checks, and symlink boundaries. */
 import { promises as fsp } from 'node:fs'
 import path from 'node:path'
+import { DOCUMENT_ID_PATTERN } from '../constants.js'
 import { apiError } from '../errors.js'
 import { messages } from '../messages/index.js'
 
@@ -18,6 +19,14 @@ export function isSafeRequirementId(value) {
   const nul = String.fromCharCode(0)
   if (text.includes('/') || text.includes('\\') || text.includes(':') || text.includes(nul)) return false
   return /[\r\n]/.test(text) === false
+}
+
+/**
+ * Project document ids are strict (`DOC-<date>-<sequence>`), so a valid id can
+ * never contain path separators, dots, or NUL bytes.
+ */
+export function isSafeDocumentId(value) {
+  return typeof value === 'string' && DOCUMENT_ID_PATTERN.test(value)
 }
 
 export function safeSlug(text) {

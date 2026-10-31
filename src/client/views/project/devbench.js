@@ -22,6 +22,7 @@ import { ProjectWorktrees } from './worktrees.js'
 import { ProjectReviews } from './reviews.js'
 import { ProjectTasks } from './tasks.js'
 import { ProjectRequirements } from './requirements.js'
+import { ProjectDocuments } from './documents.js'
 import { CommitConfirmModal } from '../../ui/commit-confirm-modal.js'
 import { SettingsView } from '../settings.js'
 import { LinkView } from '../link.js'
@@ -30,11 +31,12 @@ import { McpView } from '../mcp.js'
 const EMPTY_OVERVIEW = { loading: false, error: '', data: null, key: '' }
 const EMPTY_TASKS = { loading: false, error: '', data: [], key: '' }
 const EMPTY_REVIEW = { loading: false, error: '', data: null, name: '', key: '', meta: null }
-const MASTER_TABS = ['requirements', 'commits', 'worktrees', 'reviews', 'tasks']
+const MASTER_TABS = ['requirements', 'documents', 'commits', 'worktrees', 'reviews', 'tasks']
 const OPEN_TARGET_ICONS = { vscode: IconCode, system: IconFolder, iterm: IconTerminal }
 const TAB_LABEL_KEYS = {
   overview: 'project.tab.overview',
   requirements: 'project.tab.requirements',
+  documents: 'project.tab.documents',
   commits: 'project.tab.commits',
   worktrees: 'project.tab.worktrees',
   reviews: 'project.tab.reviews',
@@ -858,6 +860,7 @@ export function ProjectDevbenchPage(props) {
   const tabDefs = [
     ['overview', 'project.tab.overview'],
     ['requirements', 'project.tab.requirements'],
+    ['documents', 'project.tab.documents'],
     ['sep', ''],
     ['commits', 'project.tab.commits'],
     ['worktrees', 'project.tab.worktrees'],
@@ -942,6 +945,15 @@ export function ProjectDevbenchPage(props) {
         tasks: effectiveTaskList,
         onReloadTasks: function () { return loadTasks(currentWorkspace.workspaceId) },
         onOpenCommit: openCommitFromRequirement,
+      })
+      : h('div', { className: 'devbench-empty-panel' }, t('project.selectHint'))
+  } else if (activeTab === 'documents') {
+    tabContent = currentWorkspace
+      ? h(ProjectDocuments, {
+        key: 'documents-' + currentWorkspace.workspaceId,
+        t: t, workspace: currentWorkspace,
+        configured: state.data.configured === true,
+        onOpenSettings: openSettings, showToast: showToast,
       })
       : h('div', { className: 'devbench-empty-panel' }, t('project.selectHint'))
   } else if (activeTab === 'commits') {

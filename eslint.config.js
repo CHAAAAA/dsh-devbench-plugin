@@ -2,7 +2,7 @@
  * ESLint flat config.
  *
  * Besides syntax rules, the per-layer blocks below encode the architectural
- * dependency rules documented in README.md (项目结构) and AGENTS.md (开发约束):
+ * dependency rules documented in AGENTS.md (分层约束与开发约定):
  *
  *   host: plugin → http/tools → services → domain → storage/integrations/platform
  *                              ↘ shared / messages / prompts (leaf utilities)

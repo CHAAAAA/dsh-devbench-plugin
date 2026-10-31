@@ -58,6 +58,15 @@ export function IconLink() {
   return h(Svg, null, h('path', { d: 'M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 1 0-5.66-5.66l-1.5 1.5M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66l1.5-1.5' }))
 }
 export function IconCheck() { return h(Svg, null, h('path', { d: 'M5 12.5l4.5 4.5L19 7.5' })) }
+/** Five-pointed star; `filled` renders a solid bookmark star (favorite state). */
+export function IconStar(props) {
+  const filled = Boolean(props && props.filled === true)
+  const size = props && props.size ? props.size : 15
+  return h(Svg, { size: size }, h('path', {
+    d: 'M12 3.6l2.6 5.35 5.9.86-4.27 4.16 1.01 5.87L12 16.97l-5.24 2.87 1.01-5.87-4.27-4.16 5.9-.86z',
+    fill: filled ? 'currentColor' : 'none',
+  }))
+}
 export function IconArrow() { return h(Svg, null, h('path', { d: 'M9 18l6-6-6-6' })) }
 /** VS Code-style code brackets, used by the "open project in editor" action. */
 export function IconCode() {

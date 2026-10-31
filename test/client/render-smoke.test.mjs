@@ -20,6 +20,9 @@ import { ProjectTasks } from '../../src/client/views/project/tasks.js'
 import {
   ProjectRequirements, titleMatches, mergeSearchItems, createFullTextSearch,
 } from '../../src/client/views/project/requirements.js'
+import {
+  ProjectDocuments, documentTitleMatches,
+} from '../../src/client/views/project/documents.js'
 import { CommitConfirmModal } from '../../src/client/ui/commit-confirm-modal.js'
 import { CommitDiffBrowser, buildCommitFileTree } from '../../src/client/ui/commit-diff-browser.js'
 import { HomeView, HomeTaskRow, HomeRunningRow } from '../../src/client/views/home.js'
@@ -293,6 +296,7 @@ test('all client views render once without undefined references', function () {
     ProjectReviews,
     ProjectTasks,
     ProjectRequirements,
+    ProjectDocuments,
     CommitConfirmModal,
     HomeView,
   ]
@@ -358,9 +362,15 @@ test('project workbench renders every workspace tab', function () {
     return node.props && node.props.className === 'devbench-project-tabs'
   })
   const tabText = textOf(tabBar, []).join(' ')
+  // REQ-20261031-004: the documents tab sits between requirements and commits.
+  const requirementsIndex = tabText.indexOf('project.tab.requirements')
+  const documentsIndex = tabText.indexOf('project.tab.documents')
   const commitsIndex = tabText.indexOf('project.tab.commits')
   const worktreesIndex = tabText.indexOf('project.tab.worktrees')
   const reviewsIndex = tabText.indexOf('project.tab.reviews')
+  assert.equal(requirementsIndex >= 0, true)
+  assert.equal(documentsIndex > requirementsIndex, true)
+  assert.equal(commitsIndex > documentsIndex, true)
   assert.equal(worktreesIndex > commitsIndex, true)
   assert.equal(reviewsIndex > worktreesIndex, true)
   assert.equal(tabText.indexOf('project.tab.tasks') > reviewsIndex, true)
@@ -3013,3 +3023,556 @@ test('project styles keep master-detail panes scrollable and commit diffs indepe
   assert.equal(CSS.indexOf('.devbench-ws-files{max-height:140px;overflow:auto') >= 0, true)
   assert.equal(CSS.indexOf('.devbench-ws-diff{max-height:') >= 0, true)
 })
+
+/* REQ-20261031-004: project documents tab (Host-managed Markdown files). */
+const documentSummaries = [
+  {
+    id: 'DOC-20261031-001', title: '发布流程',
+    createdAt: '2026-10-31T00:00:00.000Z', updatedAt: '2026-10-31T01:00:00.000Z',
+  },
+  {
+    id: 'DOC-20261031-002', title: '发布检查清单',
+    createdAt: '2026-10-31T00:00:00.000Z', updatedAt: '2026-10-31T02:00:00.000Z',
+  },
+]
+const documentBody = '# 发布流程\n\n先构建再发布。'
+function selectedDocumentFixture(doc) {
+  return Object.assign({ workspaceId: 'w1' }, doc || documentSummaries[0])
+}
+function documentDetailFixture(doc, body) {
+  const target = doc || documentSummaries[0]
+  return {
+    loading: false, error: '', body: body === undefined ? documentBody : body,
+    data: target, key: 'w1/' + target.id,
+  }
+}
+/** Seeds the ProjectDocuments hook slots by index (hook order lives in documents.js). */
+function seedDocumentsHooks(options) {
+  const opts = options || {}
+  const instance = { hooks: [] }
+  // 0 list, 1 selected, 2 detail, 3 editing, 4 titleDraft, 5 bodyDraft, 6 dirty,
+  // 7 saving, 8 saveError, 9 conflict, 10 createModal, 11 deleteModal, 12 search,
+  // 13 scope, 14 limit, 15 fullSearch, 16 markdownHelpOpen; refs and effects follow.
+  instance.hooks[0] = {
+    value: opts.list || { loading: false, error: '', data: documentSummaries, workspaceId: 'w1' },
+  }
+  instance.hooks[1] = { value: opts.selected === undefined ? null : opts.selected }
+  instance.hooks[2] = {
+    value: opts.detail || { loading: false, error: '', body: '', data: null, key: '' },
+  }
+  instance.hooks[3] = { value: opts.editing === true }
+  instance.hooks[4] = { value: opts.titleDraft || '' }
+  instance.hooks[5] = { value: opts.bodyDraft || '' }
+  instance.hooks[6] = { value: opts.dirty === true }
+  instance.hooks[7] = { value: opts.saving === true }
+  instance.hooks[8] = { value: opts.saveError || '' }
+  instance.hooks[9] = { value: opts.conflict === true }
+  instance.hooks[10] = { value: opts.createModal || null }
+  instance.hooks[11] = { value: opts.deleteModal || null }
+  instance.hooks[12] = { value: opts.search || '' }
+  instance.hooks[13] = { value: opts.scope || 'title' }
+  instance.hooks[14] = { value: opts.limit || 10 }
+  instance.hooks[15] = {
+    value: opts.fullSearch || {
+      scope: '', query: '', loading: false, error: '', items: [], hasMore: false, total: 0,
+    },
+  }
+  instance.hooks[16] = { value: opts.markdownHelpOpen === true }
+  instances.set('root:', instance)
+  return instance
+}
+function documentsProps(overrides) {
+  return Object.assign({
+    t: t, workspace: stateData.workspaces[0], configured: true,
+    onOpenSettings: noop, showToast: noop,
+  }, overrides)
+}
+test('documents title scope filters titles only while full scope shows host hits', function () {
+  assert.equal(documentTitleMatches(documentSummaries[0], '发布'), true)
+  assert.equal(documentTitleMatches(documentSummaries[0], 'DOC-2026'), false)
+  assert.equal(documentTitleMatches(documentSummaries[0], '  '), true)
+  assert.equal(documentTitleMatches(null, 'x'), false)
+})
+test('project workbench renders the documents tab master-detail', function () {
+  uiStore.set({
+    view: 'project', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'documents',
+  })
+  instances.clear()
+  seedDevbenchInstance()
+  render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  // Locate the ProjectDocuments instance by its list-state hook, then seed it.
+  let documents = null
+  instances.forEach(function (instance) {
+    if (documents !== null) return
+    if (instance.hooks.some(function (hook) {
+      return hook && hook.value && typeof hook.value === 'object' &&
+        Array.isArray(hook.value.data) && hook.value.workspaceId !== undefined
+    })) documents = instance
+  })
+  assert.equal(Boolean(documents), true)
+  documents.hooks[0].value = {
+    loading: false, error: '', data: documentSummaries, workspaceId: 'w1',
+  }
+  documents.hooks[1].value = selectedDocumentFixture()
+  documents.hooks[2].value = documentDetailFixture()
+  const nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  const text = textOf(nodes, []).join(' ')
+  assert.equal(text.indexOf('发布流程') >= 0, true)
+  assert.equal(text.indexOf('发布检查清单') >= 0, true)
+  assert.equal(text.indexOf('先构建再发布。') >= 0, true)
+  assert.equal(nodes.some(function (node) {
+    return node.props && node.props.className === 'devbench-master'
+  }), true)
+  uiStore.set({ activeTab: 'overview' })
+})
+test('documents tab renders title-only rows, selection and the unconfigured state', function () {
+  try {
+    instances.clear()
+    seedDocumentsHooks()
+    const props = documentsProps()
+    let nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    let rows = dataRows(nodes)
+    assert.equal(rows.length, 2)
+    // Requirement: the list shows titles only (no id, timestamps, status or snippet).
+    assert.deepEqual(rows.map(function (row) { return textOf(row, []).join(' ').trim() }),
+      ['发布流程', '发布检查清单'])
+    assert.equal(findButton(nodes, 'project.documents.new') !== undefined, true)
+    const search = nodes.find(function (node) {
+      return node.type === 'input' && node.props['aria-label'] === 'project.documents.search'
+    })
+    assert.equal(Boolean(search), true)
+    const scopeSelect = nodes.find(function (node) {
+      return node.type === 'select' && node.props['aria-label'] === 'project.documents.search.scope'
+    })
+    assert.equal(Boolean(scopeSelect), true)
+    assert.deepEqual(scopeSelect.children[0].map(function (option) { return option.props.value }),
+      ['title', 'full'])
+    // Selecting a row opens the detail pane and keeps the local list selection.
+    rows[1].props.onClick({ stopPropagation: noop })
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    const activeRow = nodes.find(function (node) {
+      return node.props && node.props.className === 'devbench-master-row active'
+    })
+    assert.equal(Boolean(activeRow), true)
+    assert.equal(textOf(activeRow, []).join(' ').indexOf('发布检查清单') >= 0, true)
+    assert.equal(textOf(nodes, []).join(' ').indexOf('panel.loading') >= 0, true)
+
+    instances.clear()
+    const unconfigured = []
+    nodes = render({
+      type: ProjectDocuments,
+      props: documentsProps({
+        configured: false,
+        onOpenSettings: function () { unconfigured.push('settings') },
+      }),
+      children: [],
+    })
+    const text = textOf(nodes, []).join(' ')
+    assert.equal(text.indexOf('project.documents.unconfigured') >= 0, true)
+    const settings = findButton(nodes, 'project.documents.settings')
+    assert.equal(Boolean(settings), true)
+    settings.props.onClick()
+    assert.deepEqual(unconfigured, ['settings'])
+    assert.equal(dataRows(nodes).length, 0)
+  } finally {
+    instances.clear()
+  }
+})
+test('documents edit mode saves without leaving the editor', async function () {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  const toasts = []
+  globalThis.fetch = async function (url, init) {
+    calls.push({ url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null })
+    return {
+      status: 200,
+      json: async function () {
+        return {
+          ok: true,
+          value: {
+            document: Object.assign({}, documentSummaries[0], {
+              title: '发布流程（更新）', updatedAt: '2026-10-31T03:00:00.000Z',
+            }),
+          },
+        }
+      },
+    }
+  }
+  try {
+    instances.clear()
+    seedDocumentsHooks({
+      selected: selectedDocumentFixture(),
+      detail: documentDetailFixture(),
+    })
+    const props = documentsProps({
+      showToast: function (kind, text) { toasts.push({ kind: kind, text: text }) },
+    })
+    let nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    assert.equal(textOf(nodes, []).join(' ').indexOf('先构建再发布。') >= 0, true)
+    const edit = nodes.find(function (node) {
+      return node.type === 'button' && node.props.title === 'project.documents.edit'
+    })
+    assert.equal(Boolean(edit), true)
+    edit.props.onClick()
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    assert.equal(nodes.some(function (node) {
+      return node.props && node.props.className === 'devbench-md-editor'
+    }), true)
+    const titleInput = nodes.find(function (node) {
+      return node.type === 'input' && node.props['aria-label'] === 'detail.title'
+    })
+    assert.equal(Boolean(titleInput), true)
+    assert.equal(titleInput.props.value, '发布流程')
+    assert.equal(findButton(nodes, 'project.documents.save').props.disabled, true)
+    assert.equal(findButton(nodes, 'detail.editor.done') !== undefined, true)
+    const textarea = nodes.find(function (node) { return node.type === 'textarea' })
+    // Editing keeps the draft locally and enables saving without leaving edit mode.
+    titleInput.props.onChange({ target: { value: '发布流程（更新）' } })
+    textarea.props.onChange({ target: { value: '# 发布流程\n\n新的正文。' } })
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    assert.equal(textOf(nodes, []).join(' ').indexOf('detail.saveState.unsaved') >= 0, true)
+    const saveButton = findButton(nodes, 'project.documents.save')
+    assert.equal(saveButton.props.disabled, false)
+    await saveButton.props.onClick()
+    await flushMicrotasks()
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].method, 'POST')
+    assert.equal(calls[0].url.indexOf('/document/save') > 0, true)
+    assert.deepEqual(calls[0].body, {
+      workspaceId: 'w1', id: 'DOC-20261031-001', title: '发布流程（更新）',
+      body: '# 发布流程\n\n新的正文。', expectedUpdatedAt: '2026-10-31T01:00:00.000Z',
+    })
+    assert.equal(toasts.some(function (toast) { return toast.text === 'project.documents.saved' }), true)
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    // Saving never exits the editing surface by itself.
+    assert.equal(nodes.some(function (node) { return node.type === 'textarea' }), true)
+    assert.equal(textOf(nodes, []).join(' ').indexOf('project.documents.saved') >= 0, false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+test('documents save conflict keeps the local draft and offers reload or overwrite', async function () {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async function (url, init) {
+    calls.push({ url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null })
+    return {
+      status: 409,
+      json: async function () {
+        return { ok: false, error: { code: 'document-conflict', message: 'document changed' } }
+      },
+    }
+  }
+  try {
+    instances.clear()
+    seedDocumentsHooks({
+      selected: selectedDocumentFixture(),
+      detail: documentDetailFixture(),
+      editing: true,
+      titleDraft: '发布流程',
+      bodyDraft: '# 本地草稿',
+      dirty: true,
+    })
+    const props = documentsProps()
+    let nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    await findButton(nodes, 'project.documents.save').props.onClick()
+    await flushMicrotasks()
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    const text = textOf(nodes, []).join(' ')
+    assert.equal(text.indexOf('project.documents.conflict.banner') >= 0, true)
+    assert.equal(findButton(nodes, 'project.documents.conflict.reload') !== undefined, true)
+    const overwrite = findButton(nodes, 'project.documents.conflict.overwrite')
+    assert.equal(Boolean(overwrite), true)
+    // The local draft is not discarded by the 409 response.
+    const textarea = nodes.find(function (node) { return node.type === 'textarea' })
+    assert.equal(Boolean(textarea), true)
+    assert.equal(textarea.props.value, '# 本地草稿')
+    // Overwrite retries the same save with force=true.
+    globalThis.fetch = async function (url, init) {
+      calls.push({ url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null })
+      return {
+        status: 200,
+        json: async function () { return { ok: true, value: { document: documentSummaries[0] } } },
+      }
+    }
+    await overwrite.props.onClick()
+    await flushMicrotasks()
+    const forced = calls[calls.length - 1]
+    assert.equal(forced.url.indexOf('/document/save') > 0, true)
+    assert.equal(forced.body.force, true)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+test('documents tab creates and deletes documents through the host api', async function () {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  const created = {
+    id: 'DOC-20261031-003', title: '发布说明',
+    createdAt: '2026-10-31T04:00:00.000Z', updatedAt: '2026-10-31T04:00:00.000Z',
+  }
+  let nextDocuments = documentSummaries
+  globalThis.fetch = async function (url, init) {
+    const target = String(url)
+    calls.push({ url: target, method: init.method, body: init.body ? JSON.parse(init.body) : null })
+    let value = {}
+    if (target.indexOf('/document/create') > 0) {
+      nextDocuments = documentSummaries.concat([created])
+      value = { document: created }
+    } else if (target.indexOf('/document/delete') > 0) {
+      nextDocuments = documentSummaries.slice(1)
+      value = { deleted: true, id: documentSummaries[0].id }
+    } else if (target.indexOf('/documents?') > 0) {
+      value = { documents: nextDocuments }
+    }
+    return { status: 200, json: async function () { return { ok: true, value: value } } }
+  }
+  try {
+    instances.clear()
+    seedDocumentsHooks({
+      createModal: { title: '发布说明', body: '# 初次', busy: false, error: '' },
+    })
+    let props = documentsProps()
+    let nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    await findButton(nodes, 'project.documents.new.create').props.onClick()
+    await flushMicrotasks()
+    const createCall = calls.find(function (call) { return call.url.indexOf('/document/create') > 0 })
+    assert.equal(Boolean(createCall), true)
+    assert.deepEqual(createCall.body, {
+      workspaceId: 'w1', title: '发布说明', body: '# 初次',
+    })
+    assert.equal(calls.some(function (call) { return call.url.indexOf('/documents?') > 0 }), true)
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    assert.equal(dataRows(nodes).length, 3)
+    assert.equal(textOf(nodes, []).join(' ').indexOf('发布说明') >= 0, true)
+
+    // Deleting the selected document clears the detail pane and reloads the list.
+    calls.length = 0
+    nextDocuments = documentSummaries
+    instances.clear()
+    seedDocumentsHooks({
+      selected: selectedDocumentFixture(),
+      detail: documentDetailFixture(),
+      deleteModal: { doc: documentSummaries[0], busy: false, error: '' },
+    })
+    props = documentsProps()
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    await findButton(nodes, 'action.delete').props.onClick()
+    await flushMicrotasks()
+    const deleteCall = calls.find(function (call) { return call.url.indexOf('/document/delete') > 0 })
+    assert.equal(Boolean(deleteCall), true)
+    assert.deepEqual(deleteCall.body, { workspaceId: 'w1', id: 'DOC-20261031-001' })
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    assert.equal(dataRows(nodes).length, 1)
+    assert.equal(textOf(nodes, []).join(' ').indexOf('project.documents.empty.title') >= 0, true)
+    assert.equal(textOf(nodes, []).join(' ').indexOf('project.documents.deleted') >= 0, false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+test('documents full scope debounces the host search and retries failures', async function (t) {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const originalFetch = globalThis.fetch
+  const calls = []
+  const hit = {
+    id: documentSummaries[1].id, title: documentSummaries[1].title,
+    updatedAt: documentSummaries[1].updatedAt,
+    match: { field: 'body', snippet: '…正文 needle 上下文…' },
+  }
+  globalThis.fetch = async function (url, init) {
+    calls.push({ url: String(url), method: init.method })
+    return {
+      status: 200,
+      json: async function () {
+        return {
+          ok: true,
+          value: { query: 'needle', scope: 'full', total: 1, hasMore: true, items: [hit] },
+        }
+      },
+    }
+  }
+  try {
+    instances.clear()
+    seedDocumentsHooks({ search: 'needle', scope: 'full' })
+    const props = documentsProps()
+    let nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    assert.equal(textOf(nodes, []).join(' ').indexOf('project.documents.search.loading') >= 0, true)
+    const instance = instances.get('root:')
+    const effectIndex = instance.hooks.findIndex(function (hook) {
+      return hook && typeof hook.fn === 'function' && Array.isArray(hook.deps) && hook.deps.length === 4
+    })
+    assert.equal(effectIndex >= 0, true)
+    instance.hooks[effectIndex].fn()
+    t.mock.timers.tick(249)
+    await flushMicrotasks()
+    assert.equal(calls.length, 0)
+    t.mock.timers.tick(1)
+    await flushMicrotasks()
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].url.indexOf('/document/search?') > 0, true)
+    assert.equal(calls[0].url.indexOf('workspaceId=w1') > 0, true)
+    assert.equal(calls[0].url.indexOf('q=needle') > 0, true)
+    assert.equal(calls[0].url.indexOf('scope=full') > 0, true)
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    const text = textOf(nodes, []).join(' ')
+    assert.equal(text.indexOf('发布检查清单') >= 0, true)
+    assert.equal(text.indexOf('project.documents.search.hasMore') >= 0, true)
+    // A failing search surfaces the retry shortcut.
+    globalThis.fetch = async function (url, init) {
+      calls.push({ url: String(url), method: init.method })
+      return {
+        status: 500,
+        json: async function () {
+          return { ok: false, error: { code: 'search-failed', message: 'search failed' } }
+        },
+      }
+    }
+    instance.hooks[effectIndex].fn()
+    t.mock.timers.tick(250)
+    await flushMicrotasks()
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    let errorText = textOf(nodes, []).join(' ')
+    assert.equal(errorText.indexOf('search failed') >= 0, true)
+    const retry = findButton(nodes, 'project.documents.search.retry')
+    assert.equal(Boolean(retry), true)
+    globalThis.fetch = async function (url, init) {
+      calls.push({ url: String(url), method: init.method })
+      return {
+        status: 200,
+        json: async function () {
+          return {
+            ok: true,
+            value: { query: 'needle', scope: 'full', total: 1, hasMore: false, items: [hit] },
+          }
+        },
+      }
+    }
+    await retry.props.onClick()
+    await flushMicrotasks()
+    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    errorText = textOf(nodes, []).join(' ')
+    assert.equal(errorText.indexOf('发布检查清单') >= 0, true)
+    assert.equal(errorText.indexOf('search failed') >= 0, false)
+  } finally {
+    globalThis.fetch = originalFetch
+    t.mock.timers.reset()
+  }
+})
+test('requirement list toggles favorites and filters favorites only', async function () {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  let reloads = 0
+  const workspace = Object.assign({}, stateData.workspaces[0], {
+    requirements: [
+      Object.assign({}, summary, { favorite: true, workspaceId: 'w1' }),
+      Object.assign({}, summary, {
+        id: 'REQ-2', title: 'Second requirement', status: 'new',
+        favorite: false, workspaceId: 'w1',
+      }),
+    ],
+  })
+  globalThis.fetch = async function (url, init) {
+    calls.push({ url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null })
+    return { status: 200, json: async function () { return { ok: true, value: { requirement: summary } } } }
+  }
+  try {
+    resetListState('requirements')
+    uiStore.set({
+      view: 'project', selectedProjectId: 'w1', selectedRequirement: null,
+      activeTab: 'requirements',
+    })
+    instances.clear()
+    const props = requirementListProps({
+      workspace: workspace,
+      onReloadState: function () { reloads += 1; return Promise.resolve() },
+    })
+    let nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    const favButton = nodes.find(function (node) {
+      return node.type === 'button' && node.props.title === 'project.requirements.unfavorite'
+    })
+    const addButton = nodes.find(function (node) {
+      return node.type === 'button' && node.props.title === 'project.requirements.favorite'
+    })
+    assert.equal(Boolean(favButton), true)
+    assert.equal(Boolean(addButton), true)
+    assert.equal(favButton.props['aria-pressed'], true)
+    assert.equal(addButton.props['aria-pressed'], false)
+    addButton.props.onClick({ stopPropagation: noop })
+    nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    // The pending row cannot be toggled twice.
+    const busyButton = nodes.find(function (node) {
+      return node.type === 'button' && node.props.title === 'project.requirements.favorite'
+    })
+    assert.equal(busyButton.props.disabled, true)
+    await flushMicrotasks()
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].method, 'POST')
+    assert.equal(calls[0].url.indexOf('/requirement/favorite') > 0, true)
+    assert.deepEqual(calls[0].body, { workspaceId: 'w1', id: 'REQ-2', favorite: true })
+    assert.equal(reloads, 1)
+
+    // The favorites-only toggle sits next to the status filter and filters the list.
+    nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    assert.equal(dataRows(nodes).length, 2)
+    const favoriteOnly = findButton(nodes, 'project.requirements.favoriteOnly')
+    assert.equal(Boolean(favoriteOnly), true)
+    assert.equal(favoriteOnly.props['aria-pressed'], false)
+    favoriteOnly.props.onClick()
+    assert.equal(uiStore.state.lists.requirements.favoriteOnly, true)
+    nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    assert.equal(dataRows(nodes).length, 1)
+    assert.equal(textOf(dataRows(nodes)[0], []).join(' ').indexOf('Sample') >= 0, true)
+  } finally {
+    globalThis.fetch = originalFetch
+    resetListState('requirements')
+  }
+})
+test('requirement detail header toggles the favorite through the same host api', async function () {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  let detailReloads = 0
+  let stateReloads = 0
+  globalThis.fetch = async function (url, init) {
+    calls.push({ url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null })
+    return {
+      status: 200,
+      json: async function () {
+        return { ok: true, value: { requirement: Object.assign({}, summary, { favorite: true }) } }
+      },
+    }
+  }
+  try {
+    instances.clear()
+    const data = {
+      requirement: Object.assign({}, summary, { favorite: false }),
+      body: '# Title\n\nBody',
+    }
+    const favNodes = render({
+      type: DetailView,
+      props: {
+        t: t, selected: { workspaceId: 'w1', id: 'REQ-1' }, summary: summary,
+        detail: { loading: false, error: '', data: data, key: 'w1/REQ-1' },
+        onBack: noop, onExecute: function () { return Promise.resolve() },
+        onReloadDetail: function () { detailReloads += 1; return Promise.resolve() },
+        onReloadState: function () { stateReloads += 1; return Promise.resolve() },
+        onOpenSession: noop, onUnlinkSession: noop, showToast: noop,
+      },
+      children: [],
+    })
+    const fav = favNodes.find(function (node) {
+      return node.type === 'button' && node.props.title === 'project.requirements.favorite'
+    })
+    assert.equal(Boolean(fav), true)
+    assert.equal(fav.props['aria-pressed'], false)
+    await fav.props.onClick()
+    await flushMicrotasks()
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].url.indexOf('/requirement/favorite') > 0, true)
+    assert.deepEqual(calls[0].body, { workspaceId: 'w1', id: 'REQ-1', favorite: true })
+    assert.equal(detailReloads, 1)
+    assert.equal(stateReloads, 1)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+

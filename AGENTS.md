@@ -1,6 +1,6 @@
 # AGENTS.md — 开发与协作指南
 
-本文件只保留协作规则、架构约束与验证要求；产品功能和安装使用见 [README.md](./README.md)。
+本文件只保留协作规则、架构约束与验证要求；产品功能和安装使用见 [README.md](./README.md)（英文，默认）与 [README_zh.md](./README_zh.md)（中文）。
 
 ## 1. 协作约定
 
@@ -31,7 +31,7 @@ Client: entry → plugin → views → ui → core → runtime
 | HTTP 接口 | `src/host/http/routes/` → `routes/index.js` → `src/client/core/api.js` |
 | 业务 / 存储 / Git | `src/host/services/`、`domain/`、`storage/`、`integrations/git.js` |
 | Client 入口 / 界面 | `src/client/entry.js`、`plugin.js`；页面在 `views/`，复用组件在 `ui/`，纯逻辑在 `core/` |
-| 配置项 | `src/host/storage/config.js`、`src/host/http/routes/config.js`、`src/client/views/settings.js`、README |
+| 配置项 | `src/host/storage/config.js`、`src/host/http/routes/config.js`、`src/client/views/settings.js`、README.md / README_zh.md |
 | 文案 | `src/host/messages/`、`src/client/i18n/`；插件页元数据在 `locale/{zh,en}.json` |
 | 构建 / 发布检查 | `scripts/build-client.mjs`、`scripts/lib/preflight.mjs`、`scripts/lib/pack.mjs`、`scripts/release/` |
 
@@ -70,9 +70,9 @@ Client: entry → plugin → views → ui → core → runtime
 
 ## 5. 文档与提交
 
-- 只维护 `README.md`（产品与使用）和 `AGENTS.md`（协作与开发）；不新增 `docs/`、CHANGELOG、设计文档、验证记录等第三份文档，也不引用已删除的文档。
-- 用户可见行为变化必须同步 README，包括功能、设置、数据位置、错误提示和安装方式。README 随 npm 包发布，AGENTS.md 不打包。
-- 版本号升级时同步更新所有文档中的版本表述：README 版本表、安装/迁移命令（`@<version>`）与 tarball 文件名示例等，避免文档版本与 `package.json.version` 不一致；`package.json.version` 是唯一版本来源。
+- 只维护 `README.md`（产品与使用，默认英文）、`README_zh.md`（README 中文版）和 `AGENTS.md`（协作与开发）；不新增 `docs/`、CHANGELOG、设计文档、验证记录等第三份文档，也不引用已删除的文档。
+- 用户可见行为变化必须同步更新 `README.md` 与 `README_zh.md`，包括功能、设置、数据位置、错误提示和安装方式；两文件内容保持一一对应。两份 README 均随 npm 包发布，AGENTS.md 不打包。
+- 版本号升级时同步更新所有文档中的版本表述：README 版本表、安装命令（`@<version>`）与 tarball 文件名示例等，避免文档版本与 `package.json.version` 不一致；`package.json.version` 是唯一版本来源。
 - 本文件只记录长期有效的规则；合并重复内容，避免维护文件数量、完整目录树与脚本实现细节。
 - 用户要求提交时，使用中文 Conventional Commits：`<type>(<scope>): <简短摘要>`，并添加 `Co-authored-by: Codex <codex@pku.edu.cn>`。一个提交只做一件事；PR 说明改动、原因、验证与兼容影响。
 - 用户要求新建分支时，从 `main` 创建 `feat/<topic>`、`fix/<topic>`、`docs/<topic>`、`refactor/<topic>` 或 `release/<version>`；遵循用户指定的分支名。
@@ -99,6 +99,6 @@ npm run release:catalog    # 发布成功后生成索引；未发布预览用 --
 ## 7. 易错点
 
 - **生效方式**：Host 或插件清单变更需重启 DSH；Client 变更先 build 再刷新；共享协议同时影响两端，需 build 并重启。
-- **本地 link**：操作 Desktop profile 前完全退出 DSH，使用 Desktop 自带 CLI；包名或 checkout 路径变化后重新安装 link，具体步骤见 README。
+- **本地 link**：操作 Desktop profile 前完全退出 DSH，使用 Desktop 自带 CLI；包名或 checkout 路径变化后重新安装 link，并用 `plugin --profile desktop list` 确认依赖为 `link:` 记录。
 - **工作树**：默认在 `~/.dsh-devbench/worktrees/`，可由配置覆盖；按 `devbench/<需求ID>`（兼容 `dsh-req/*`）和 Git 注册路径识别，不依赖目录名或 `../` 相对关系。开发 worktree 不共享 `node_modules/` 与 `dist/`。
 - **加载与打包失败**：先检查 `exports["./client"]`、bundle 是否最新、module id 与包名是否一致，再查看 preflight 输出及 `dist/release/manifest.json`。

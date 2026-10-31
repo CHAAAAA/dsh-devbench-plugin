@@ -16,7 +16,7 @@
  *   --repository <url>      public repository URL for the entry
  *   --icon-base <url>       base URL for icon.svg (default jsDelivr for npm)
  *
- * Hosting and submission steps live in the README release section.
+ * Hosting and submission steps live in the AGENTS.md release section.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -244,4 +244,4 @@ if (values.get('index-url')) {
   console.log('  index   : ' + values.get('index-url'))
 }
 console.log('  下一步：把 index.json 托管到 HTTPS（GitHub Pages / 独立 npm catalog 包），')
-console.log('  然后在 DSH「插件 → 发现 → 索引源」中添加该 URL。详见 README.md 的发布章节。')
+console.log('  然后在 DSH「插件 → 发现 → 索引源」中添加该 URL。详见 AGENTS.md 的发布章节。')

@@ -148,4 +148,10 @@ export const extraMessages = Object.freeze({
   mcpOperationFailed: "MCP 操作失败",
   mcpRollbackFailed: "MCP 配置回滚失败，请手工检查 profile 的 cordis.patch.yml",
   mcpBadExpression: "新增 MCP 服务时不支持 !!js 表达式；可先保存普通值，再编辑改为表达式",
+  documentNotFound: "文档不存在",
+  documentConflict: "文档已被其他操作修改，请重新加载后再保存",
+  badDocumentId: "文档 ID 不合法",
+  documentsCorrupt: "文档文件损坏，无法读取",
+  documentsDirectoryInvalid: "文档目录不可用，请检查需求根目录下的工作区目录",
+  documentTooLarge: "文档正文过长（最多 1MB）",
 })

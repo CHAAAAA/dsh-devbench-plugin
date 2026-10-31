@@ -110,6 +110,33 @@ export function linkRequirementCommit(payload, opts) {
 export function unlinkRequirementCommit(payload, opts) {
   return request('/requirement/unlink-commit', payload, opts)
 }
+/** Toggle the requirement bookmark; the host keeps updatedAt unchanged. */
+export function setRequirementFavorite(payload, opts) {
+  return request('/requirement/favorite', payload, opts)
+}
+/** Project documents live under `<root>/<workspace>/.documents/` on the host. */
+export function listDocuments(workspaceId, opts) {
+  return request('/documents?' + qs({ workspaceId: workspaceId }), undefined, opts)
+}
+export function getDocument(sel, opts) {
+  return request('/document/get', sel, opts)
+}
+export function createDocument(payload, opts) {
+  return request('/document/create', payload, opts)
+}
+export function saveDocument(payload, opts) {
+  return request('/document/save', payload, opts)
+}
+export function deleteDocument(payload, opts) {
+  return request('/document/delete', payload, opts)
+}
+/** Workspace-wide title/full-text document search. */
+export function searchDocuments(workspaceId, query, scope, limit, opts) {
+  const values = { workspaceId: workspaceId, q: query }
+  if (typeof scope === 'string' && scope !== '') values.scope = scope
+  if (limit !== undefined && limit !== null) values.limit = limit
+  return request('/document/search?' + qs(values), undefined, opts)
+}
 export function listFiles(sel, path, opts) {
   const query = { workspaceId: sel.workspaceId, id: sel.id }
   if (path !== undefined && path !== null) query.path = path

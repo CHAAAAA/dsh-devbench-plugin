@@ -11,10 +11,10 @@ import { createSingleFlight } from '../../core/async.js'
 import { isActiveTask } from '../../core/project-utils.js'
 import { Banner, Modal, formatShortTime } from '../../ui/common.js'
 import { DetailView } from './requirement-detail.js'
-import { IconPlus, IconTrash, IconReq } from '../../ui/icons.js'
+import { IconPlus, IconTrash, IconReq, IconStar } from '../../ui/icons.js'
 const requirementExecutions = createSingleFlight()
 const REQUIREMENT_STATUSES = ['new', 'running', 'done', 'archived', 'cancelled']
-const DEFAULT_LIST_STATE = { search: '', status: 'all', scope: 'title', limit: 10, scrollTop: 0 }
+const DEFAULT_LIST_STATE = { search: '', status: 'all', favoriteOnly: false, scope: 'title', limit: 10, scrollTop: 0 }
 const LIST_PAGE_SIZE = 10
 const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_SCOPE_TITLE = 'title'
@@ -128,10 +128,12 @@ export function ProjectRequirements(props) {
   const [deleteModal, setDeleteModal] = useState(null)
   const [unlinkBusy, setUnlinkBusy] = useState(false)
   const [fullSearch, setFullSearch] = useState(EMPTY_FULL_SEARCH)
+  const [favoriteBusyId, setFavoriteBusyId] = useState('')
   const detailSeqRef = useRef(0)
   const createBusyRef = useRef(false)
   const deleteBusyRef = useRef(false)
   const unlinkBusyRef = useRef(false)
+  const favoriteBusyRef = useRef(new Set())
   const listBodyRef = useRef(null)
   const scrollFrameRef = useRef(0)
   const searchRef = useRef(null)
@@ -404,6 +406,37 @@ export function ProjectRequirements(props) {
       })
     })
   }
+  function markFavoriteLocally(id, favorite) {
+    setFullSearch(function (prev) {
+      if (!prev.items.some(function (hit) { return hit && hit.id === id })) return prev
+      return Object.assign({}, prev, {
+        items: prev.items.map(function (hit) {
+          return hit && hit.id === id ? Object.assign({}, hit, { favorite: favorite }) : hit
+        }),
+      })
+    })
+  }
+  function toggleFavorite(item) {
+    if (!item || typeof item.id !== 'string' || item.id === '') return
+    if (favoriteBusyRef.current.has(item.id)) return
+    const targetWorkspaceId = item.workspaceId || (workspace ? workspace.workspaceId : workspaceId)
+    if (!targetWorkspaceId) return
+    const nextFavorite = item.favorite !== true
+    favoriteBusyRef.current.add(item.id)
+    setFavoriteBusyId(item.id)
+    api.setRequirementFavorite({
+      workspaceId: targetWorkspaceId, id: item.id, favorite: nextFavorite,
+    }).then(function () {
+      favoriteBusyRef.current.delete(item.id)
+      setFavoriteBusyId('')
+      markFavoriteLocally(item.id, nextFavorite)
+      reloadState().catch(function () { showToast('error', t('common.refreshFailed')) })
+    }, function (err) {
+      favoriteBusyRef.current.delete(item.id)
+      setFavoriteBusyId('')
+      showToast('error', errorText(err) || t('project.requirements.favoriteFailed'))
+    })
+  }
   function markRequirementRunning(item) {
     return api.saveRequirement({
       workspaceId: item.workspaceId, id: item.id, status: 'running',
@@ -516,6 +549,7 @@ export function ProjectRequirements(props) {
   const requirements = workspace && Array.isArray(workspace.requirements) ? workspace.requirements : []
   const search = typeof lists.search === 'string' ? lists.search : ''
   const statusFilter = typeof lists.status === 'string' && lists.status !== '' ? lists.status : 'all'
+  const favoriteOnly = lists.favoriteOnly === true
   const scope = lists.scope === SEARCH_SCOPE_FULL ? SEARCH_SCOPE_FULL : SEARCH_SCOPE_TITLE
   const limit = Number(lists.limit) > 0 ? Number(lists.limit) : LIST_PAGE_SIZE
   const trimmedQuery = search.trim()
@@ -537,6 +571,7 @@ export function ProjectRequirements(props) {
   }
   const filtered = scoped.filter(function (item) {
     if (statusFilter !== 'all' && item.status !== statusFilter) return false
+    if (favoriteOnly && item.favorite !== true) return false
     return true
   })
   const visible = filtered.slice(0, limit)
@@ -592,6 +627,23 @@ export function ProjectRequirements(props) {
           : null,
         h('span', null, formatShortTime(item.updatedAt)))),
     h('div', { className: 'devbench-master-row-actions' },
+      h('button', {
+        className: 'devbench-icon-btn' + (item.favorite === true ? ' active' : ''),
+        type: 'button',
+        title: item.favorite === true
+          ? t('project.requirements.unfavorite')
+          : t('project.requirements.favorite'),
+        'aria-label': item.favorite === true
+          ? t('project.requirements.unfavorite')
+          : t('project.requirements.favorite'),
+        'aria-pressed': item.favorite === true,
+        disabled: favoriteBusyId === item.id,
+        onClick(event) {
+          event.stopPropagation()
+          toggleFavorite(item)
+        },
+        onKeyDown(event) { event.stopPropagation() },
+      }, h(IconStar, { size: 14, filled: item.favorite === true })),
       h('button', {
         className: 'devbench-icon-btn',
         title: title,
@@ -694,7 +746,18 @@ export function ProjectRequirements(props) {
           return [status, t('status.' + status)]
         })).map(function (entry) {
           return h('option', { key: entry[0], value: entry[0] }, entry[1])
-        })))),
+        })),
+        h('button', {
+          className: 'devbench-btn' + (favoriteOnly ? ' primary' : ' ghost'),
+          type: 'button',
+          style: { flex: 'none', height: '26px', padding: '0 8px', fontSize: '12px' },
+          title: t('project.requirements.favoriteOnly'),
+          'aria-label': t('project.requirements.favoriteOnly'),
+          'aria-pressed': favoriteOnly,
+          onClick() {
+            setListState('requirements', { favoriteOnly: !favoriteOnly, limit: LIST_PAGE_SIZE })
+          },
+        }, h(IconStar, { size: 13, filled: favoriteOnly }), t('project.requirements.favoriteOnly')))),
     h('div', { className: 'devbench-master-list-body', ref: listBodyRef, onScroll: onListScroll }, listBody),
     listFoot ? h('div', { className: 'devbench-master-list-foot' }, listFoot) : null)
   let detailSide

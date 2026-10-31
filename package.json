@@ -41,6 +41,7 @@
     "src/host",
     "src/shared",
     "README.md",
+    "README_zh.md",
     "LICENSE"
   ],
   "dsh": {

@@ -18,6 +18,10 @@ export {
 export const MAPPING_FILE = 'workspaces.json'
 export const REQUIREMENT_FILE = 'requirement.md'
 export const DELETED_REQUIREMENTS_FILE = 'deleted-requirements.json'
+/** Directory under a workspace folder that stores project documents (Markdown files). */
+export const DOCUMENTS_DIR = '.documents'
+/** Project document id: DOC-<local date YYYYMMDD>-<3+ digit sequence>. */
+export const DOCUMENT_ID_PATTERN = /^DOC-\d{8}-\d{3,}$/
 export const VALID_STATUS = Object.freeze(['new', 'running', 'done', 'archived', 'cancelled'])
 export const AGENT_WRITABLE_STATUS = Object.freeze(['new', 'running'])
 export const MAX_BODY_BYTES = 8 * 1024 * 1024

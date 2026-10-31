@@ -8,7 +8,7 @@ const EMPTY_SELECTION = {
   tasks: null,
 }
 const EMPTY_LISTS = {
-  requirements: { search: '', status: 'all', scope: 'title', limit: 10, scrollTop: 0 },
+  requirements: { search: '', status: 'all', favoriteOnly: false, scope: 'title', limit: 10, scrollTop: 0 },
   tasks: { status: 'all', kind: 'all', limit: 10, scrollTop: 0 },
   reviews: { search: '', limit: 10, scrollTop: 0 },
   commits: { scrollTop: 0 },

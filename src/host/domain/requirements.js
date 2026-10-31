@@ -157,6 +157,7 @@ export function toSummary(meta, folderPath, workspaceId) {
     sessions: meta.sessions.slice(),
     commits: requirementCommitList(meta),
     worktree: Boolean(meta.extra && meta.extra.worktree === true),
+    favorite: Boolean(meta.extra && meta.extra.favorite === true),
   }
 }
 
@@ -255,10 +256,17 @@ export async function findRequirementAnywhere(root, requirementId, workspaceId) 
   return candidates[0]
 }
 
-async function persistRequirement(requirement, patch) {
+/**
+ * Persist a requirement patch.
+ *
+ * `options.touch !== false` refreshes `updatedAt`; favorite toggles pass
+ * `touch: false` so bookmarking a requirement does not reorder it by "last
+ * modified".
+ */
+async function persistRequirement(requirement, patch, options = {}) {
   const meta = Object.assign({}, requirement.meta, patch.meta || {})
   const body = patch.body === undefined ? requirement.body : String(patch.body)
-  meta.updatedAt = new Date().toISOString()
+  if (options.touch !== false) meta.updatedAt = new Date().toISOString()
   const text = serializeRequirementText(meta, body)
   await atomicWriteFile(requirement.file, text)
   return {
@@ -289,12 +297,28 @@ export function updateRequirement(requirement, updater, options = {}) {
       throw apiError(409, 'requirement-conflict', messages.requirementConflict)
     }
     const patch = await updater(latest)
-    return persistRequirement(latest, patch)
+    return persistRequirement(latest, patch, { touch: options.touch !== false })
   })
 }
 
 export async function saveRequirement(requirement, patch) {
   return updateRequirement(requirement, function () { return patch })
+}
+
+/**
+ * Toggle the requirement bookmark (`extra.favorite`) without touching
+ * `updatedAt`, so favorites do not reorder the list by "last modified".
+ */
+export function setRequirementFavorite(requirement, favorite) {
+  if (typeof favorite !== 'boolean') {
+    throw apiError(400, 'bad-field', messages.invalidField + ': favorite')
+  }
+  return updateRequirement(requirement, function (latest) {
+    const extra = Object.assign({}, latest.meta.extra)
+    if (favorite === true) extra.favorite = true
+    else delete extra.favorite
+    return { meta: { extra } }
+  }, { touch: false })
 }
 
 export function createRequirement(root, workspace, folderInfo, title, body, options = {}) {
