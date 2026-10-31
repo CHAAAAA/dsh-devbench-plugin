@@ -854,10 +854,14 @@ export async function resolveProjectCommit(root, value) {
   const hashResult = await runGit(root, ['rev-parse', '--verify', value + '^{commit}'])
   if (hashResult.code !== 0) return null
   const hash = hashResult.stdout.trim()
-  const format = '%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%aI%x1f%P'
+  // `%B` is the full raw commit message (subject + body). A NUL byte keeps it
+  // separate from the metadata and cannot occur inside a Git commit object.
+  const format = '%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%aI%x1f%P%x00%B'
   const info = await runGit(root, ['show', '-s', '--pretty=format:' + format, hash])
   if (info.code !== 0) return null
-  const values = info.stdout.split('\x1f')
+  const parts = info.stdout.split('\x00')
+  const values = (parts[0] || '').split('\x1f')
+  const message = parts.slice(1).join('\x00').replace(/\r\n?/g, '\n').replace(/\s+$/, '')
   return {
     hash: values[0],
     short: values[1],
@@ -866,6 +870,7 @@ export async function resolveProjectCommit(root, value) {
     authorEmail: values[4],
     date: values[5],
     parents: values[6] ? values[6].split(' ').filter(Boolean) : [],
+    message: message.length > 0 ? message : values[2],
   }
 }
 

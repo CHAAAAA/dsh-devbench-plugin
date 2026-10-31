@@ -1560,7 +1560,9 @@ test('commit list renders load-more for a full first page', function () {
 
 test('commit detail renders changed files, diffs, linked requirements and session actions', function () {
   const detail = {
-    commit: commitData,
+    commit: Object.assign({}, commitData, {
+      message: 'feat: sample\n\nDetailed commit body\nsecond line',
+    }),
     files: [
       {
         path: 'src/a.js', oldPath: '', status: 'M', additions: 3, deletions: 1,
@@ -1603,6 +1605,8 @@ test('commit detail renders changed files, diffs, linked requirements and sessio
     children: [],
   })
   const text = textOf(nodes, []).join(' ')
+  assert.equal(text.indexOf('Detailed commit body') >= 0, true)
+  assert.equal(text.indexOf('second line') >= 0, true)
   assert.equal(text.indexOf('tabs.commits.files') >= 0, true)
   assert.equal(text.indexOf('src/a.js') >= 0, true)
   assert.equal(text.indexOf('+3') >= 0, true)

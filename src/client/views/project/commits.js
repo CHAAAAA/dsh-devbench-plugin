@@ -193,6 +193,14 @@ export function ProjectCommits(props) {
   }, [activeHash, workspaceId])
   const detail = detailState.hash === activeHash ? detailState : { loading: true, error: '', data: null, hash: activeHash }
   const detailData = detail.data
+  let commitMessage = activeCommit ? activeCommit.subject : ''
+  if (activeCommit && typeof activeCommit.message === 'string' && activeCommit.message.trim() !== '') {
+    commitMessage = activeCommit.message
+  }
+  if (detailData && detailData.commit && typeof detailData.commit.message === 'string' &&
+      detailData.commit.message.trim() !== '') {
+    commitMessage = detailData.commit.message
+  }
   const activeReviewTask = activeCommit
     ? findActiveReviewTask(props.tasks || [], activeCommit.hash)
     : null
@@ -363,9 +371,9 @@ export function ProjectCommits(props) {
         activeCommit.isMerge === true ? h('span', { className: 'devbench-pill' }, t('project.commit.merge')) : null),
       h('div', {
         className: 'devbench-data-title devbench-commit-detail-subject',
-        title: activeCommit.subject,
-        style: { fontSize: '15px', fontWeight: 600, whiteSpace: 'normal', lineHeight: 1.4 },
-      }, activeCommit.subject),
+        title: commitMessage,
+        style: { fontSize: '15px', fontWeight: 600, lineHeight: 1.4 },
+      }, commitMessage),
       h('div', { className: 'devbench-project-meta' },
         h('span', null, activeCommit.authorName || activeCommit.authorEmail || ''),
         h('span', null, formatDate(activeCommit.date))))

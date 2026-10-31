@@ -98,6 +98,8 @@ test('commit detail exposes every changed file, its diff and linked requirements
   const harness = await projectHarness()
   try {
     const project = await setupProjectWithRequirement(harness)
+    await git(project.projectPath,
+      ['commit', '--amend', '-m', 'commit 2', '-m', 'Detailed body\nsecond line'])
     const head = (await git(project.projectPath, ['rev-parse', 'HEAD'])).stdout.trim()
     expectOk(await linkCommit(harness, project, head))
 
@@ -106,6 +108,7 @@ test('commit detail exposes every changed file, its diff and linked requirements
       '&commit=' + encodeURIComponent(head)))
     assert.equal(detail.commit.hash, head)
     assert.equal(detail.commit.subject, 'commit 2')
+    assert.equal(detail.commit.message, 'commit 2\n\nDetailed body\nsecond line')
     assert.equal(detail.files.length, 1)
     const file = detail.files[0]
     assert.equal(file.path, 'file.txt')

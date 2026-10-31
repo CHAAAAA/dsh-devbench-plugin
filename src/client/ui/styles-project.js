@@ -270,7 +270,7 @@ export const PROJECT_CSS = [
   /* Commit detail: changed-file tree on the left, independently scrollable diff on the right. */
   '.devbench-detail-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid var(--dsw-alias-border-l1)}',
   '.devbench-commit-detail-body{display:flex;flex-direction:column;gap:10px;overflow:hidden;padding:12px 16px 16px}',
-  '.devbench-commit-detail-subject{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+  '.devbench-commit-detail-subject{max-height:200px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}',
   '.devbench-commit-detail-body .devbench-detail-actions{margin-bottom:0;flex:none}',
   '.devbench-commit-info{flex:none;display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap;max-height:66px;overflow:auto;font-size:11px;color:var(--dsw-alias-label-secondary);min-width:0}',
   '.devbench-commit-info-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}',
