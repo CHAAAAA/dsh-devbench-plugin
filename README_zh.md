@@ -7,7 +7,7 @@
 | 项 | 值 |
 | --- | --- |
 | 包名 | `dsh-devbench-plugin` |
-| 版本 | **1.0.3** |
+| 版本 | **1.0.4** |
 | DSH 兼容 | `>=0.2.1-rc.3 <0.3.0-0` |
 | Node.js | >= 20.18.1 |
 | 许可证 | MIT |
@@ -35,14 +35,14 @@
 
 1. 打开 DSH 的「插件」页（部分版本位于「设置 → 插件」）。
 2. 点「添加插件」。
-3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.3`。
+3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.4`。
 4. 等待安装完成，点「立即启用」。
 5. 如果提示需要重启，完全退出并重新打开 DSH（不要只关闭窗口）。
 
 ### CLI
 
 ```sh
-dsh plugin --profile web add dsh-devbench-plugin@1.0.3
+dsh plugin --profile web add dsh-devbench-plugin@1.0.4
 ```
 
 ### 离线 tarball
@@ -50,7 +50,7 @@ dsh plugin --profile web add dsh-devbench-plugin@1.0.3
 用绝对路径安装发布的 tarball：
 
 ```sh
-dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.3.tgz
+dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.4.tgz
 ```
 
 请保留 tarball 原文件：profile 依赖会记录它的 `file:` 绝对路径。
@@ -61,6 +61,8 @@ dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.3.tgz
 2. 打开侧边栏的 **DevBench**，添加本地 Git 仓库作为项目，即可在对应页签中开始使用。
 
 ## 开发与协作
+
+源码使用 TypeScript。开发需要 Node.js >= 20.18.1，并执行 `npm ci`（会自动构建 `dist/`）；修改宿主代码后执行 `npm run build` 并重启 DSH，修改客户端代码后执行 `npm run build` 并刷新浏览器。
 
 开发、测试与发布规范见 [AGENTS.md](AGENTS.md)。
 

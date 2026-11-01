@@ -7,7 +7,7 @@
 | Item | Value |
 | --- | --- |
 | Package | `dsh-devbench-plugin` |
-| Version | **1.0.3** |
+| Version | **1.0.4** |
 | DSH compatibility | `>=0.2.1-rc.3 <0.3.0-0` |
 | Node.js | >= 20.18.1 |
 | License | MIT |
@@ -35,14 +35,14 @@
 
 1. Open the DSH **Plugins** page (in some versions it is under **Settings → Plugins**).
 2. Click **Add plugin**.
-3. Enter the package name and exact version: `dsh-devbench-plugin@1.0.3`.
+3. Enter the package name and exact version: `dsh-devbench-plugin@1.0.4`.
 4. Wait for the installation to finish, then click **Enable**.
 5. If prompted to restart, fully quit and reopen DSH (do not just close the window).
 
 ### CLI
 
 ```sh
-dsh plugin --profile web add dsh-devbench-plugin@1.0.3
+dsh plugin --profile web add dsh-devbench-plugin@1.0.4
 ```
 
 ### Offline tarball
@@ -50,7 +50,7 @@ dsh plugin --profile web add dsh-devbench-plugin@1.0.3
 Install a release tarball by its absolute path:
 
 ```sh
-dsh plugin --profile web add /absolute/path/to/dsh-devbench-plugin-1.0.3.tgz
+dsh plugin --profile web add /absolute/path/to/dsh-devbench-plugin-1.0.4.tgz
 ```
 
 Keep the tarball file: the profile dependency records its `file:` absolute path.
@@ -61,6 +61,8 @@ Keep the tarball file: the profile dependency records its `file:` absolute path.
 2. Open **DevBench** in the sidebar, add a local Git repository as a project, and start working in its tabs.
 
 ## Development and collaboration
+
+The source code is TypeScript. Development requires Node.js >= 20.18.1 and `npm ci` (which builds `dist/` automatically). After changing host code, run `npm run build` and restart DSH; after changing client code, run `npm run build` and refresh the browser.
 
 Development, testing, and release conventions are documented in [AGENTS.md](AGENTS.md).
 

@@ -3,7 +3,7 @@
   "version": "1.0.4",
   "description": "DSH DevBench 插件：按工作区管理 Markdown 需求，AI 提交与代码评审，Git 工作树、后台任务与周报",
   "type": "module",
-  "main": "index.js",
+  "main": "dist/index.js",
   "icon": "icon.svg",
   "license": "MIT",
   "author": "wangyc",
@@ -18,14 +18,15 @@
     "devbench",
     "requirements",
     "project-management",
-    "markdown"
+    "markdown",
+    "typescript"
   ],
   "engines": {
     "node": ">=20.18.1",
     "dsh": ">=0.2.1-rc.3 <0.3.0-0"
   },
   "exports": {
-    ".": "./index.js",
+    ".": "./dist/index.js",
     "./client": "./dist/client.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
@@ -33,13 +34,13 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "index.js",
+    "dist/index.js",
     "dist/client.js",
+    "dist/host",
+    "dist/shared",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "src/host",
-    "src/shared",
     "README.md",
     "README_zh.md",
     "LICENSE"
@@ -67,27 +68,35 @@
     "access": "public"
   },
   "scripts": {
-    "build": "node scripts/build-client.mjs",
+    "build": "npm run build:host && npm run build:client",
+    "build:host": "tsx scripts/build-host.ts",
+    "build:client": "tsx scripts/build-client.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepare": "npm run build",
     "pretest": "npm run build",
-    "test": "node --test test/host/*.test.js test/client/*.test.mjs",
+    "test": "node --import tsx --test test/host/*.test.ts test/client/*.test.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "messages:check": "node scripts/check-messages.cjs",
-    "check": "npm run lint && npm run messages:check && npm test",
-    "verify:publish": "node scripts/release/preflight.mjs",
-    "release:preflight": "node scripts/release/preflight.mjs",
-    "release:pack": "node scripts/release/pack.mjs",
-    "release:publish": "node scripts/release/publish.mjs",
-    "release:catalog": "node scripts/release/catalog.mjs",
-    "release:smoke": "node scripts/release/smoke-install.mjs",
-    "prepack": "npm run build && node scripts/release/preflight.mjs",
-    "prepublishOnly": "node scripts/release/preflight.mjs --publish"
+    "messages:check": "tsx scripts/check-messages.ts",
+    "check": "npm run lint && npm run typecheck && npm run messages:check && npm test",
+    "verify:publish": "tsx scripts/release/preflight.ts",
+    "release:preflight": "tsx scripts/release/preflight.ts",
+    "release:pack": "tsx scripts/release/pack.ts",
+    "release:publish": "tsx scripts/release/publish.ts",
+    "release:catalog": "tsx scripts/release/catalog.ts",
+    "release:smoke": "tsx scripts/release/smoke-install.ts",
+    "prepack": "npm run build && tsx scripts/release/preflight.ts",
+    "prepublishOnly": "tsx scripts/release/preflight.ts --publish"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@types/node": "^24.19.2",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
-    "globals": "^17.13.0"
+    "globals": "^17.13.0",
+    "jiti": "^2.7.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1"
   }
 }
