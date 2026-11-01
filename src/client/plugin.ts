@@ -5,6 +5,7 @@ import { zh, en } from './i18n/index.js'
 import { DevbenchIcon } from './ui/icons.js'
 import { RequirementsPage } from './views/requirements-page.js'
 import { SessionRequirementAction } from './views/project/session-action.js'
+import { prefetchPluginVersion } from './core/plugin-version.js'
 const inject = [
   'slots', 'locale', 'layout', 'uiWorkspace', 'sessions', 'remote', 'remote.session',
 ]
@@ -13,6 +14,8 @@ export function createPlugin(): { inject: string[]; apply(ctx: ClientContext): v
     inject: inject,
     apply(ctx: ClientContext): void {
       setRuntimeContext(ctx)
+      // Startup update check: fire-and-forget so a slow registry never blocks the panel.
+      prefetchPluginVersion().catch(function () {})
       ctx.effect(function () {
         return ctx.locale.register(NS, { zh: zh, en: en })
       }, 'devbench: dictionaries')

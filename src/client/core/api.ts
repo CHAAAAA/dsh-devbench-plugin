@@ -298,3 +298,20 @@ export function deleteMcpServer(payload: { id: string }, opts?: RequestOptions):
 export function toggleMcpServer(payload: { id: string; enabled: boolean }, opts?: RequestOptions): Promise<Api.McpMutationResult> {
   return request('/mcp/toggle', payload, opts)
 }
+/** Browser wait for the one-click plugin upgrade; the host may run pnpm for minutes. */
+export const PLUGIN_UPGRADE_TIMEOUT_MS = 5 * 60 * 1000
+/** Read the cached plugin self-update info (REQ-20261101-001). */
+export function getPluginVersion(opts?: RequestOptions): Promise<Api.PluginVersionInfo> {
+  return request('/version', undefined, opts)
+}
+/** Force a registry check; the host waits for the check to settle. */
+export function checkPluginVersion(opts?: RequestOptions): Promise<Api.PluginVersionInfo> {
+  return request('/version/check', {}, opts)
+}
+/** Install the latest published version into the active DSH profile. */
+export function upgradePlugin(opts?: RequestOptions): Promise<Api.PluginUpgradeResponse> {
+  // The host may run pnpm for minutes; keep the generous default unless the caller overrides it.
+  const options = Object.assign({}, opts || {})
+  if (options.timeoutMs === undefined) options.timeoutMs = PLUGIN_UPGRADE_TIMEOUT_MS
+  return request('/version/upgrade', {}, options)
+}

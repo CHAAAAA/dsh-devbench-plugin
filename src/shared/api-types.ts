@@ -245,3 +245,43 @@ export interface McpServerDto {
 export interface McpServers { profile: { name: string; patchPath: string } | null; available: boolean; canWrite: boolean; hotReload: boolean; patchError: string; servers: McpServerDto[] }
 export interface McpMutationResult extends McpServers { action: 'created' | 'updated' | 'deleted' | 'enabled' | 'disabled'; restartRequired: boolean; backupPath?: string }
 export type SaveMcpServerRequest = { mode: 'create'; server: McpServerInput } | { mode: 'update'; id: string; server: McpServerInput }
+
+/* Plugin self-update (REQ-20261101-001). */
+export type PluginInstallKind = 'package' | 'link' | 'unknown'
+export type PluginVersionStatus = 'idle' | 'checking' | 'ready' | 'error'
+/** Why the upgrade action is unavailable; '' when it is available. */
+export type PluginUpgradeBlockedReason =
+  | ''
+  | 'checking'
+  | 'update-unavailable'
+  | 'link-install'
+  | 'environment-unavailable'
+export interface PluginVersionInfo {
+  packageName: string
+  repositoryUrl: string
+  /** Version of the host code that is running now (captured when the plugin started). */
+  currentVersion: string
+  /** Version of the package on disk; differs from currentVersion after an upgrade that needs a restart. */
+  installedVersion: string
+  /** Latest version published on npm; '' until a check succeeds. */
+  latestVersion: string
+  status: PluginVersionStatus
+  updateAvailable: boolean
+  restartRequired: boolean
+  installKind: PluginInstallKind
+  canUpgrade: boolean
+  upgradeBlockedReason: PluginUpgradeBlockedReason
+  upgrading: boolean
+  checkedAt: string
+  error: string
+}
+export interface PluginUpgradeResult {
+  beforeVersion: string
+  targetVersion: string
+  installedVersion: string
+  restartRequired: boolean
+}
+export interface PluginUpgradeResponse {
+  upgrade: PluginUpgradeResult
+  info: PluginVersionInfo
+}

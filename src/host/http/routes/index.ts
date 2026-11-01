@@ -8,6 +8,7 @@ import { mcpRoutes } from './mcp.js'
 import { projectRoutes } from './projects.js'
 import { projectWorktreeRoutes } from './project-worktrees.js'
 import { requirementRoutes } from './requirements.js'
+import { versionRoutes } from './version.js'
 
 export const routes = [
   ...configRoutes,
@@ -19,4 +20,5 @@ export const routes = [
   ...fileRoutes,
   ...gitRoutes,
   ...mcpRoutes,
+  ...versionRoutes,
 ]

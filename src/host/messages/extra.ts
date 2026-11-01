@@ -154,4 +154,11 @@ export const extraMessages: Record<string, string> = Object.freeze({
   documentsCorrupt: "文档文件损坏，无法读取",
   documentsDirectoryInvalid: "文档目录不可用，请检查需求根目录下的工作区目录",
   documentTooLarge: "文档正文过长（最多 1MB）",
+  updateCheckFailed: "检查更新失败",
+  updateNotAvailable: "当前已是最新版本，无需升级",
+  updateInProgress: "正在升级，请稍候",
+  updateLinkInstall: "当前为本地 link 安装（开发模式），不支持一键升级；请改为从 npm 安装后再使用升级",
+  updateEnvironmentUnavailable: "当前 DSH 环境未提供 profile 信息，无法自动升级；请手动执行升级命令",
+  updateInstallFailed: "升级安装失败",
+  updateVersionMismatch: "升级后安装的版本与目标版本不一致，可能是 npm 源尚未同步或新版本仍在等待期，请稍后重试",
 })

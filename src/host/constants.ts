@@ -13,6 +13,8 @@ export {
   CONFIG_DIR_NAME,
   MCP_CLIENT_MODULE,
   MCP_SECRET_MASK,
+  PACKAGE_NAME,
+  PROJECT_URL,
 } from '../shared/protocol.js'
 
 export const MAPPING_FILE = 'workspaces.json'
@@ -112,6 +114,18 @@ export const DEFAULT_COMMIT_PROMPT_TEMPLATE = [
   '5. 禁止修改文件或运行修改类工具。',
   '6. 调用 project_commit_propose 后立即停止。',
 ].join('\n')
+
+/** npm registries polled by the plugin update check, primary first (REQ-20261101-001). */
+export const NPM_REGISTRY_URLS = Object.freeze([
+  'https://registry.npmjs.org',
+  'https://registry.npmmirror.com',
+])
+/** One registry lookup of the update check; a slow registry must not block the page. */
+export const UPDATE_CHECK_TIMEOUT_MS = 5000
+/** How long a successful or failed update check is reused before checking again. */
+export const UPDATE_CHECK_TTL_MS = 30 * 60 * 1000
+/** Upper bound for the pnpm upgrade run (registry download + install). */
+export const UPDATE_INSTALL_TIMEOUT_MS = 5 * 60 * 1000
 
 /** Project commit log pagination: 10 per page, at most 100 per request. */
 export const DEFAULT_COMMIT_PAGE_SIZE = 10

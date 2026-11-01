@@ -25,6 +25,7 @@
 - **Worktrees**: a three-state list (created / directory missing / enabled but not created) with create, view changes, AI commit, push, open in VS Code, terminal, or file manager, copy path and branch, clean up stale registrations, and delete (keeping the branch).
 - **Task center**: status, cancel, retry, and open session for commit, review, and requirement tasks. Invalid task fields report tasks as unavailable while preserving the original file; missing or `null` optional fields in older records remain supported.
 - **Home and weekly reports**: recent and unfinished tasks across projects, a locally generated weekly report, and an overview of the MCP services in the current DSH profile.
+- **Version check and upgrade**: when the plugin starts, it checks the latest version on npm. A newer release adds an upgrade button in the top-right corner of the plugin page; clicking it installs the latest version through the current DSH profile's package manager, and a DSH restart activates it. The **About plugin** panel on the home page shows the current version, latest version, upgrade status, and project URL.
 - **MCP service management**: view, add, edit, enable or disable, and remove MCP entries of the current DSH profile. Writes go to that profile's `cordis.patch.yml` with an automatic backup, and suspected secrets are masked.
 - **Session linking**: link the current session to a requirement from the session header, or jump back to it.
 - **Agent tools**: six tools (`requirement_read/update/list`, `project_commit_propose/git_show/review_write`) that let agents read and write requirements, commit messages, and reviews.
@@ -54,6 +55,13 @@ dsh plugin --profile web add /absolute/path/to/dsh-devbench-plugin-1.0.5.tgz
 ```
 
 Keep the tarball file: the profile dependency records its `file:` absolute path.
+
+## Version and upgrades
+
+- When the plugin starts (and whenever the plugin page is opened) it asks npm for the latest `dsh-devbench-plugin` version. The answer is cached for 30 minutes, and the **About plugin** panel on the home page offers a manual **Check for updates** action.
+- When a newer version exists, the top-right corner of the plugin page shows an **Upgrade to vX** button. After confirmation the plugin runs `add dsh-devbench-plugin@<latest>` in the current DSH profile directory with the launcher-provided package manager, without unloading the running plugin; restart DSH afterwards to activate the new version.
+- A local development copy installed with `link:` cannot upgrade itself (the button is disabled and names the development mode). Install from npm instead to use this feature.
+- When automatic upgrading is unavailable (for example the host exposes no profile directory or package manager), the upgrade button is disabled and the UI explains why. Upgrading only changes the current DSH profile's dependencies and leaves other profiles untouched.
 
 ## First use
 

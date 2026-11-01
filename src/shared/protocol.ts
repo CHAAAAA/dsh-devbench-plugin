@@ -36,3 +36,9 @@ export const MCP_SECRET_MASK = '\u2022\u2022\u2022\u2022\u2022\u2022'
 
 /** Browser request timeout for MCP save/delete/toggle (the host waits for DSH reload). */
 export const MCP_SAVE_TIMEOUT_MS = 120000
+
+/** Published npm package name of this plugin (also used by the update check). */
+export const PACKAGE_NAME = 'dsh-devbench-plugin'
+
+/** Public project page shown on the plugin home page (REQ-20261101-001). */
+export const PROJECT_URL = 'https://github.com/CHAAAAA/dsh-devbench-plugin'

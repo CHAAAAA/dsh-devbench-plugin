@@ -10,6 +10,7 @@ import { useEmptySessions } from '../ui/session-row.js'
 import { renderMarkdown } from '../ui/markdown.js'
 import { IconRefresh, IconSettings, IconChevron, IconServer } from '../ui/icons.js'
 import { HomeMcpPanel } from './mcp.js'
+import { PluginAboutPanel } from './plugin-update.js'
 /**
  * Resolve whether a task session still exists. The session list snapshot starts
  * in `pending`; until it is `ready` the id cannot be verified, so the row stays
@@ -443,5 +444,6 @@ export function HomeView(props) {
       leftColumn,
       h('div', { className: 'devbench-home-col' },
         h(HomeMcpPanel, { t: t, onOpenMcp: props.onOpenMcp }),
+        h(PluginAboutPanel, { t: t }),
         weeklyPanel)))
 }

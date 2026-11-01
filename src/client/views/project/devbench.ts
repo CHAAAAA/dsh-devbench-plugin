@@ -8,6 +8,7 @@ import type { StateDto, ProjectOverview as ProjectOverviewDto, ProjectGit, TaskD
 import type { SessionsHook } from '../../ui/session-row.js'
 import { useUiState, uiStore, setSelection } from '../../core/ui-store.js'
 import { hasLeaveGuard, navigateView, navigateBack, runLeaveGuard } from '../../core/navigation.js'
+import { usePluginVersion } from '../../core/plugin-version.js'
 import { showToast as pushToast } from '../../ui/toast.js'
 import { ToastHost } from '../../ui/toast.js'
 import { DialogHost, confirmDialog } from '../../ui/dialogs.js'
@@ -32,6 +33,7 @@ import { SettingsView } from '../settings.js'
 import { LinkView } from '../link.js'
 import { HomeView } from '../home.js'
 import { McpView } from '../mcp.js'
+import { PluginUpdateBadge, pluginUpdateBadgeMode } from '../plugin-update.js'
 const EMPTY_OVERVIEW = { loading: false, error: '', data: null, key: '' }
 const EMPTY_TASKS = { loading: false, error: '', data: [], key: '' }
 const EMPTY_REVIEW = { loading: false, error: '', data: null, name: '', key: '', meta: null }
@@ -49,6 +51,7 @@ const TAB_LABEL_KEYS = {
 export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: SessionsHook }): ReactElement {
   const t = props.t || translate
   const ui = useUiState()
+  const pluginVersion = usePluginVersion()
   const [state, setState] = useState<{ data: StateDto | null; loading: boolean; error: string }>({ data: null, loading: true, error: '' })
   const [overview, setOverview] = useState<{ data: ProjectOverviewDto | null; loading: boolean; error: string; key: string }>(EMPTY_OVERVIEW)
   const [tasksState, setTasksState] = useState<{ data: TaskDto[]; loading: boolean; error: string; key: string }>(EMPTY_TASKS)
@@ -1140,6 +1143,12 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
       state.error ? h('div', { style: { padding: '8px 18px 0' } }, h(Banner, { kind: 'error' }, state.error)) : null,
       tabBody)
   }
+  // The update badge floats in the top-right corner of every sub page; the
+  // wrapper reserves its width so the existing page-head actions stay clickable.
+  const updateBadgeMode = pluginUpdateBadgeMode(pluginVersion.info, pluginVersion.upgrading)
+  const paneWithUpdate = h('div', {
+    className: 'devbench-main-wrap' + (updateBadgeMode === '' ? '' : ' has-plugin-update'),
+  }, mainPane, h(PluginUpdateBadge, { t: t }))
   const commitModalElement = h(CommitConfirmModal, {
     t: t, modal: commitModal,
     projectTitle: projectTitle,
@@ -1182,7 +1191,7 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
         'aria-label': t('project.sidebar.expand'),
         onClick() { setSidebarVisible(true) },
       }, h(IconLayoutSidebar, { size: 15, collapsed: true })),
-    mainPane)
+    paneWithUpdate)
   }
   return h(getFragment(), null, content, commitModalElement,
     h(ToastHost, { key: 'toasts' }),
