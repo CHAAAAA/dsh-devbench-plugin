@@ -28,7 +28,9 @@ export interface ClientContext {
     openSession(sessionId: string): void
   }
   sessions: {
-    create(options: { workspaceId: string } | { cwd: string }): Promise<RemoteResult<{ sessionId: string }>>
+    // DSH's client Session controller resolves the created session id directly;
+    // only the `ctx.remote.*` RPC namespace uses the { ok, value } envelope.
+    create(options: { workspaceId: string } | { cwd: string }): Promise<string>
   }
   remote: {
     session: {

@@ -383,9 +383,7 @@ export function ProjectRequirements(props) {
         }
         return ctx.sessions.create({ workspaceId: item.workspaceId })
       })
-      .then(function (result) {
-        if (result.ok === false) throw new Error(result.error.message)
-        const id = result.value.sessionId
+      .then(function (id) {
         return api.linkSession({ workspaceId: item.workspaceId, id: item.id, sessionId: id })
           .then(function (value) {
             linkedSummary = value && value.requirement ? value.requirement : null

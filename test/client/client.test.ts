@@ -238,7 +238,7 @@ test('plugin keeps DSH inject and slot registration contract', function () {
     },
     layout: { selectPanel() {} },
     uiWorkspace: { async pickDirectory() { return null }, openSession() {} },
-    sessions: { async create() { return { ok: true, value: { sessionId: 'session-1' } } } },
+    sessions: { async create() { return 'session-1' } },
     remote: { session: {
       async prompt() { return { ok: true, value: undefined } },
       async rename() { return { ok: true, value: undefined } },
@@ -287,8 +287,9 @@ test('UI races preserve the latest view and serialize requirement execution', as
   const t = (key: string): string => key
   function deferred<T>() {
     let resolve: (value: T) => void
-    const promise = new Promise<T>(done => { resolve = done })
-    return { promise, resolve: (value: T) => resolve(value) }
+    let reject: (reason: unknown) => void
+    const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail })
+    return { promise, resolve: (value: T) => resolve(value), reject: (reason: unknown) => reject(reason) }
   }
   try {
     // A slower file response must not replace the newly selected file or its draft.
@@ -361,7 +362,7 @@ test('UI races preserve the latest view and serialize requirement execution', as
     }
     const second = { ...first, id: 'REQ-2', title: 'Second' }
     const worktree = { enabled: false, exists: false, path: '', branch: '', base: '' }
-    // Exercise both session locations and the host's explicit failure envelope.
+    // Exercise both session locations and a rejected session creation.
     for (const mode of ['workspace', 'worktree', 'failed'] as const) {
       const events: string[] = []
       const posts: Array<{ path: string; body: Record<string, unknown> }> = []
@@ -454,9 +455,8 @@ test('UI races preserve the latest view and serialize requirement execution', as
       assert.deepEqual(locations, [mode === 'worktree' ? { cwd: '/tmp/worktree' } : { workspaceId: 'w1' }])
       assert.deepEqual(events, ['save-draft', 'saved-draft', 'execute', 'create-session'])
       await act(async () => {
-        session.resolve(mode === 'failed'
-          ? { ok: false, error: { code: 'create-failed', message: 'Session creation failed' } }
-          : { ok: true, value: { sessionId: 'session-2' } })
+        if (mode === 'failed') session.reject(new Error('Session creation failed'))
+        else session.resolve('session-2')
       })
       await waitFor(() => events.includes('reload-state'), 'execution refreshes the state after settling')
       assert.deepEqual(opened, [], 'session opens only after refreshes settle')
