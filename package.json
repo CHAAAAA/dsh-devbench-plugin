@@ -1,6 +1,6 @@
 {
   "name": "dsh-devbench-plugin",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "DSH DevBench 插件：按工作区管理 Markdown 需求，AI 提交与代码评审，Git 工作树、后台任务与周报",
   "type": "module",
   "main": "dist/index.js",

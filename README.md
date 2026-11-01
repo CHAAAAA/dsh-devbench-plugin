@@ -7,7 +7,7 @@
 | 项 | 值 |
 | --- | --- |
 | 包名 | `dsh-devbench-plugin` |
-| 版本 | **1.0.5** |
+| 版本 | **1.0.6** |
 | DSH 兼容 | `>=0.2.1-rc.3 <0.3.0-0` |
 | Node.js | >= 24.9.0 |
 | 许可证 | MIT |
@@ -36,14 +36,14 @@
 
 1. 打开 DSH 的「插件」页（部分版本位于「设置 → 插件」）。
 2. 点「添加插件」。
-3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.5`。
+3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.6`。
 4. 等待安装完成，点「立即启用」。
 5. 如果提示需要重启，完全退出并重新打开 DSH（不要只关闭窗口）。
 
 ### CLI
 
 ```sh
-dsh plugin --profile web add dsh-devbench-plugin@1.0.5
+dsh plugin --profile web add dsh-devbench-plugin@1.0.6
 ```
 
 ### 离线 tarball
@@ -51,7 +51,7 @@ dsh plugin --profile web add dsh-devbench-plugin@1.0.5
 用绝对路径安装发布的 tarball：
 
 ```sh
-dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.5.tgz
+dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.6.tgz
 ```
 
 请保留 tarball 原文件：profile 依赖会记录它的 `file:` 绝对路径。
@@ -59,7 +59,7 @@ dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.5.tgz
 ## 版本与升级
 
 - 插件启动时（以及打开插件页时）会向 npm 查询 `dsh-devbench-plugin` 的最新版本；结果缓存 30 分钟，主页的「关于插件」面板可手动「检查更新」。
-- 有新版本时，插件页面右上角显示「升级到 vX」按钮。点击并确认后，插件会在当前 DSH profile 目录用启动器提供的包管理器执行 `add dsh-devbench-plugin@<最新版本>`，不会卸载正在运行的插件；安装完成后需要重启 DSH 让新版本生效。
+- 有新版本时，插件页面右上角显示「升级到 vX」按钮。点击并确认后，插件会在当前 DSH profile 目录用启动器提供的包管理器执行 `add 包名@版本 --save-exact` 安装最新版，不会卸载正在运行的插件；安装完成后需要重启 DSH 让新版本生效。
 - 通过 `link:` 安装的本地开发副本不支持一键升级（按钮禁用并提示开发模式），请改为从 npm 安装后使用该功能。
 - 无法自动升级时（例如当前环境没有暴露 profile 目录和包管理器），升级按钮会禁用并在界面上说明原因。升级只修改当前 DSH profile 的依赖，不影响其他 profile。
 

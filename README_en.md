@@ -7,7 +7,7 @@
 | Item | Value |
 | --- | --- |
 | Package | `dsh-devbench-plugin` |
-| Version | **1.0.5** |
+| Version | **1.0.6** |
 | DSH compatibility | `>=0.2.1-rc.3 <0.3.0-0` |
 | Node.js | >= 24.9.0 |
 | License | MIT |
@@ -36,14 +36,14 @@
 
 1. Open the DSH **Plugins** page (in some versions it is under **Settings → Plugins**).
 2. Click **Add plugin**.
-3. Enter the package name and exact version: `dsh-devbench-plugin@1.0.5`.
+3. Enter the package name and exact version: `dsh-devbench-plugin@1.0.6`.
 4. Wait for the installation to finish, then click **Enable**.
 5. If prompted to restart, fully quit and reopen DSH (do not just close the window).
 
 ### CLI
 
 ```sh
-dsh plugin --profile web add dsh-devbench-plugin@1.0.5
+dsh plugin --profile web add dsh-devbench-plugin@1.0.6
 ```
 
 ### Offline tarball
@@ -51,7 +51,7 @@ dsh plugin --profile web add dsh-devbench-plugin@1.0.5
 Install a release tarball by its absolute path:
 
 ```sh
-dsh plugin --profile web add /absolute/path/to/dsh-devbench-plugin-1.0.5.tgz
+dsh plugin --profile web add /absolute/path/to/dsh-devbench-plugin-1.0.6.tgz
 ```
 
 Keep the tarball file: the profile dependency records its `file:` absolute path.
@@ -59,7 +59,7 @@ Keep the tarball file: the profile dependency records its `file:` absolute path.
 ## Version and upgrades
 
 - When the plugin starts (and whenever the plugin page is opened) it asks npm for the latest `dsh-devbench-plugin` version. The answer is cached for 30 minutes, and the **About plugin** panel on the home page offers a manual **Check for updates** action.
-- When a newer version exists, the top-right corner of the plugin page shows an **Upgrade to vX** button. After confirmation the plugin runs `add dsh-devbench-plugin@<latest>` in the current DSH profile directory with the launcher-provided package manager, without unloading the running plugin; restart DSH afterwards to activate the new version.
+- When a newer version exists, the top-right corner of the plugin page shows an **Upgrade to vX** button. After confirmation the launcher-provided package manager runs `add <name>@<version> --save-exact` in the current DSH profile directory without unloading the running plugin; restart DSH afterwards to activate the new version.
 - A local development copy installed with `link:` cannot upgrade itself (the button is disabled and names the development mode). Install from npm instead to use this feature.
 - When automatic upgrading is unavailable (for example the host exposes no profile directory or package manager), the upgrade button is disabled and the UI explains why. Upgrading only changes the current DSH profile's dependencies and leaves other profiles untouched.
 
