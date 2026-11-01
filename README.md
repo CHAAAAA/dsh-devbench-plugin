@@ -1,43 +1,43 @@
 # DSH DevBench
 
-**dsh-devbench-plugin** is a project and engineering management plugin for [DeepSeek Harness](https://github.com/deepseek-ai) (DSH). Using DSH workspaces as its project source, it brings requirements, project documents, Git commits, AI-generated commit messages, code reviews, worktrees, background tasks, and weekly reports together into one sidebar workbench.
+**dsh-devbench-plugin** 是 [DeepSeek Harness](https://github.com/deepseek-ai)（DSH）的项目与工程管理插件：以 DSH workspace 为项目来源，把需求、项目文档、Git 提交、AI 提交信息、代码评审、工作树、后台任务与周报聚合到一个侧边栏工作台里。
 
-[Chinese version](README_zh.md)
+[English version](README_en.md)
 
-| Item | Value |
+| 项 | 值 |
 | --- | --- |
-| Package | `dsh-devbench-plugin` |
-| Version | **1.0.4** |
-| DSH compatibility | `>=0.2.1-rc.3 <0.3.0-0` |
+| 包名 | `dsh-devbench-plugin` |
+| 版本 | **1.0.4** |
+| DSH 兼容 | `>=0.2.1-rc.3 <0.3.0-0` |
 | Node.js | >= 20.18.1 |
-| License | MIT |
+| 许可证 | MIT |
 
-## Features
+## 功能
 
-- **Project workbench**: a three-pane master-detail layout (project tree, list, detail) with Overview, Requirements, Documents, Commits, Worktrees, Reviews, and Tasks tabs, plus breadcrumbs and view history.
-- **Requirements**: Markdown requirements per workspace with title, status, body, attachment files, related sessions, and related commits. The list supports title and full-text search (full-text matches show a body snippet), draft recovery, an unsaved-changes guard, and save conflict handling.
-- **Project documents**: every project has a **Documents** tab for simple notes such as release procedures or reusable prompts. Documents are stored as Markdown files in the `.documents/` directory of the project's directory inside the requirements root directory, so they never enter the project repository. The list shows titles only and supports title and full-text search; editing uses the same Markdown editor with live preview as requirements.
-- **Requirement favorites**: star a requirement from the list or the detail view and turn on **Favorites only** to filter the list.
-- **Requirement execution**: create a session from a requirement with a templated prompt; optionally run each requirement in its own Git worktree (branch `devbench/<requirement ID>`).
-- **AI commits**: a background agent drafts a Conventional Commit message (Chinese by default); review the preview before committing. Nothing is pushed automatically, and the commit prompt template is configurable in Settings.
-- **Git operations**: the project Overview lists uncommitted changes and supports manual commits, pull (`--ff-only`), and push (with upstream setup).
-- **Code reviews**: review any commit (full commit message, changed-file tree, and per-file diff) or the current uncommitted changes; review files are written to `.dsh-reviews/`.
-- **Worktrees**: a three-state list (created / directory missing / enabled but not created) with create, view changes, AI commit, push, open in VS Code, terminal, or file manager, copy path and branch, clean up stale registrations, and delete (keeping the branch).
-- **Task center**: status, cancel, retry, and open session for commit, review, and requirement tasks.
-- **Home and weekly reports**: recent and unfinished tasks across projects, a locally generated weekly report, and an overview of the MCP services in the current DSH profile.
-- **MCP service management**: view, add, edit, enable or disable, and remove MCP entries of the current DSH profile. Writes go to that profile's `cordis.patch.yml` with an automatic backup, and suspected secrets are masked.
-- **Session linking**: link the current session to a requirement from the session header, or jump back to it.
-- **Agent tools**: six tools (`requirement_read/update/list`, `project_commit_propose/git_show/review_write`) that let agents read and write requirements, commit messages, and reviews.
+- **项目工作台**：三栏主从布局（项目树 · 列表 · 详情），包含概览、需求、文档、提交、工作树、评审与任务页签，并提供面包屑与视图历史。
+- **需求管理**：按工作区保存 Markdown 需求（标题、状态、正文、资料文件、关联会话与关联提交）。需求列表支持「标题 / 全文」两档检索（全文命中显示正文片段），并支持草稿恢复、离开拦截与保存冲突处理。
+- **项目文档**：每个项目都有一个「文档」页签，用于记录发布流程、常用提示词等简单文档。文档以 Markdown 文件保存在「需求根目录」下该项目目录的 `.documents/` 中，不会进入项目仓库。文件列表只显示标题，支持按标题与全文检索；编辑与需求一样使用 Markdown 编辑器并实时预览。
+- **需求收藏**：在需求列表或详情页点击星标收藏需求，并可用「仅收藏」筛选列表。
+- **需求执行**：从需求一键创建会话并发送模板化提示词；可为需求启用按需求 Git worktree（分支 `devbench/<需求ID>`）。
+- **AI 提交**：后台 Agent 生成中文 Conventional Commit 提交信息，确认预览后提交；不会自动 push，提交提示词模板可在设置页修改。
+- **Git 操作**：项目「概览」展示未提交变更，支持手动提交、拉取（`--ff-only`）与推送（自动建立 upstream）。
+- **代码评审**：可对任意提交发起评审（完整提交消息、变更文件树与逐文件差异），也可评审当前未提交变更；评审文件写入 `.dsh-reviews/`。
+- **工作树管理**：三态列表（已创建 / 目录缺失 / 已启用未创建），支持创建、查看改动、AI 提交、推送、用 VS Code / 终端 / 文件管理器打开、复制路径与分支、清理残留注册以及删除（保留分支）。
+- **任务中心**：查看提交 / 评审 / 需求任务的状态，支持取消、重试与打开会话。
+- **主页与周报**：跨项目的最近任务与未完成任务、本地生成的周报，以及当前 DSH profile 的 MCP 服务概览。
+- **MCP 服务管理**：查看、添加、修改、启用/禁用或删除当前 DSH profile 的 MCP 条目。修改写入该 profile 的 `cordis.patch.yml` 并自动备份，疑似密钥以掩码显示。
+- **会话关联**：在会话头部把当前会话关联到某个需求，或跳回需求。
+- **Agent 工具**：`requirement_read/update/list`、`project_commit_propose/git_show/review_write` 共 6 个工具，让执行 Agent 读写需求、提交信息与评审。
 
-## Installation
+## 安装
 
-### DSH plugin page (recommended)
+### DSH 插件页（推荐）
 
-1. Open the DSH **Plugins** page (in some versions it is under **Settings → Plugins**).
-2. Click **Add plugin**.
-3. Enter the package name and exact version: `dsh-devbench-plugin@1.0.4`.
-4. Wait for the installation to finish, then click **Enable**.
-5. If prompted to restart, fully quit and reopen DSH (do not just close the window).
+1. 打开 DSH 的「插件」页（部分版本位于「设置 → 插件」）。
+2. 点「添加插件」。
+3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.4`。
+4. 等待安装完成，点「立即启用」。
+5. 如果提示需要重启，完全退出并重新打开 DSH（不要只关闭窗口）。
 
 ### CLI
 
@@ -45,27 +45,27 @@
 dsh plugin --profile web add dsh-devbench-plugin@1.0.4
 ```
 
-### Offline tarball
+### 离线 tarball
 
-Install a release tarball by its absolute path:
+用绝对路径安装发布的 tarball：
 
 ```sh
-dsh plugin --profile web add /absolute/path/to/dsh-devbench-plugin-1.0.4.tgz
+dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.4.tgz
 ```
 
-Keep the tarball file: the profile dependency records its `file:` absolute path.
+请保留 tarball 原文件：profile 依赖会记录它的 `file:` 绝对路径。
 
-## First use
+## 首次使用
 
-1. Open **Settings → Requirements root directory** and select or create the directory that stores requirement and document data.
-2. Open **DevBench** in the sidebar, add a local Git repository as a project, and start working in its tabs.
+1. 打开 **设置 → 需求根目录**，选择或新建用于保存需求与文档数据的目录。
+2. 打开侧边栏的 **DevBench**，添加本地 Git 仓库作为项目，即可在对应页签中开始使用。
 
-## Development and collaboration
+## 开发与协作
 
-The source code is TypeScript. Development requires Node.js >= 20.18.1 and `npm ci` (which builds `dist/` automatically). After changing host code, run `npm run build` and restart DSH; after changing client code, run `npm run build` and refresh the browser.
+源码使用 TypeScript。开发需要 Node.js >= 20.18.1，并执行 `npm ci`（会自动构建 `dist/`）；修改宿主代码后执行 `npm run build` 并重启 DSH，修改客户端代码后执行 `npm run build` 并刷新浏览器。
 
-Development, testing, and release conventions are documented in [AGENTS.md](AGENTS.md).
+开发、测试与发布规范见 [AGENTS.md](AGENTS.md)。
 
-## License
+## 许可证
 
 [MIT](LICENSE) © DSH DevBench Plugin contributors
