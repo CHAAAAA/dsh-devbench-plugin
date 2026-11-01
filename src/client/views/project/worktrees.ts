@@ -9,6 +9,7 @@
 import { h, useState, useEffect, useRef, errorText, isAbortError } from '../../runtime.js'
 import { useUiState, setSelection } from '../../core/ui-store.js'
 import * as api from '../../core/api.js'
+import type { ProjectWorktrees as ProjectWorktreesDto, WorktreeChanges } from '../../../shared/api-types.js'
 import { ListFooter, useListPage } from '../../ui/list-page.js'
 import { Banner, formatShortTime } from '../../ui/common.js'
 import { confirmDialog } from '../../ui/dialogs.js'
@@ -71,8 +72,8 @@ export function ProjectWorktrees(props) {
   const openTargets = Array.isArray(props.openTargets) && props.openTargets.length > 0
     ? props.openTargets
     : ['system']
-  const [state, setState] = useState({ loading: true, error: '', data: null, key: '' })
-  const [changesState, setChangesState] = useState(EMPTY_CHANGES)
+  const [state, setState] = useState<{ loading: boolean; error: string; data: ProjectWorktreesDto | null; key: string }>({ loading: true, error: '', data: null, key: '' })
+  const [changesState, setChangesState] = useState<{ loading: boolean; error: string; data: WorktreeChanges | null; key: string }>(EMPTY_CHANGES)
   const [changesOpen, setChangesOpen] = useState(false)
   const [busy, setBusy] = useState({})
   const [pruneBusy, setPruneBusy] = useState(false)

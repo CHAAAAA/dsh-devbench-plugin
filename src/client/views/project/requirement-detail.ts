@@ -4,6 +4,8 @@
  */
 import { h, useState, useEffect, useRef, errorText, isAbortError } from '../../runtime.js'
 import * as api from '../../core/api.js'
+import type { SaveRequirementRequest } from '../../../shared/api-types.js'
+import type { ChangeEvent } from 'react'
 import { createSerialQueue } from '../../core/async.js'
 import { setLeaveGuard, clearLeaveGuard } from '../../core/navigation.js'
 import { choiceDialog, confirmDialog } from '../../ui/dialogs.js'
@@ -491,7 +493,7 @@ export function DetailView(props) {
   }
   function saveFields(fields, options?) {
     const opts = options || {}
-    const payload: Record<string, any> = { workspaceId: sel.workspaceId, id: sel.id }
+    const payload: SaveRequirementRequest = { workspaceId: sel.workspaceId, id: sel.id }
     if (fields.title !== undefined) payload.title = fields.title
     if (fields.body !== undefined) payload.body = fields.body
     if (fields.status !== undefined) payload.status = fields.status
@@ -1042,7 +1044,7 @@ export function DetailView(props) {
     disabled: hardDisabled || statusBusy,
     title: t('status.label'),
     'aria-label': t('status.label'),
-    onChange(event) { setStatus(event.target.value).catch(noop) },
+    onChange(event: ChangeEvent<HTMLSelectElement>) { setStatus(event.target.value).catch(noop) },
   }, STATUS_ORDER.map(function (status) {
     return h('option', { key: status, value: status }, t('status.' + status))
   }))

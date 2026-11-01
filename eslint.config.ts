@@ -12,6 +12,7 @@
  * ESLint loads this `.ts` config through `jiti` (see `npm run lint`).
  */
 import js from '@eslint/js'
+import { builtinModules } from 'node:module'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
@@ -46,6 +47,10 @@ const tsLanguage = {
   parser: tseslint.parser,
 }
 
+const nodeImports = ['node:*', ...builtinModules]
+// Flat config replaces rule options, so every client layer repeats these bans.
+const clientImports = ['../host/**', '../../host/**', '../../../host/**', ...nodeImports]
+
 export default [
   { ignores: ['node_modules/**', 'dist/**', 'coverage/**', '.dsh-reviews/**'] },
   js.configs.recommended,
@@ -71,32 +76,32 @@ export default [
   // ---- shared: leaf module used by both halves -------------------------------
   {
     files: ['src/shared/**/*.ts'],
-    rules: restricted('src/shared 只能包含跨端协议常量，不能依赖 host/client/Node/React', [
-      '../host/**', '../client/**', 'node:*', 'react',
+    rules: restricted('src/shared 只能包含跨端协议常量与纯类型，不能依赖 host/client/Node/React', [
+      '../host/**', '../client/**', ...nodeImports, 'react',
     ]),
   },
 
   // ---- client: never import host implementation ------------------------------
   {
     files: ['src/client/**/*.ts'],
-    rules: restricted('client 只能共享 src/shared 协议常量，不能导入 host 实现', [
-      '../host/**', '../../host/**', '../../../host/**', 'node:*',
-    ]),
+    rules: restricted('client 不能依赖 host 实现或 Node 模块', clientImports),
   },
   {
     files: ['src/client/core/**/*.ts'],
-    rules: restricted('client/core 不能依赖 ui 或 views（依赖方向：views → ui → core）', [
-      '../ui/**', '../views/**',
+    rules: restricted('client/core 不能依赖 host/Node/ui/views（依赖方向：views → ui → core）', [
+      ...clientImports, '../ui/**', '../views/**',
     ]),
   },
   {
     files: ['src/client/ui/**/*.ts'],
-    rules: restricted('client/ui 不能依赖 views（依赖方向：views → ui）', ['../views/**']),
+    rules: restricted('client/ui 不能依赖 host/Node/views（依赖方向：views → ui）', [
+      ...clientImports, '../views/**',
+    ]),
   },
   {
     files: ['src/client/i18n/**/*.ts'],
-    rules: restricted('client/i18n 只应包含字典，不能依赖 UI 实现', [
-      '../core/**', '../ui/**', '../views/**',
+    rules: restricted('client/i18n 只应包含字典，不能依赖 host/Node/UI 实现', [
+      ...clientImports, '../core/**', '../ui/**', '../views/**',
     ]),
   },
 

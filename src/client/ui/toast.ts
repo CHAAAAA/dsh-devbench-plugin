@@ -7,7 +7,7 @@ const MAX_ITEMS = 4
 let items = []
 let sequence = 0
 const timers = new Map()
-const listeners = new Set<any>()
+const listeners = new Set<() => void>()
 
 function emit() {
   listeners.forEach(function (listener) { listener() })

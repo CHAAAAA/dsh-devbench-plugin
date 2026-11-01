@@ -7,7 +7,10 @@ import { useUiState, uiStore, setListState } from '../../core/ui-store.js'
 import { runLeaveGuard } from '../../core/navigation.js'
 import { confirmDialog } from '../../ui/dialogs.js'
 import * as api from '../../core/api.js'
+import type { RequirementDetail, RequirementSummary, RequirementSelection, RequirementSearchItem, SearchResult } from '../../../shared/api-types.js'
+import type { FullTextSearch } from '../../core/search.js'
 import { createSingleFlight } from '../../core/async.js'
+import { createFullTextSearch, mergeSearchItems } from '../../core/search.js'
 import { isActiveTask } from '../../core/project-utils.js'
 import { Banner, Modal, formatShortTime } from '../../ui/common.js'
 import { DetailView } from './requirement-detail.js'
@@ -16,7 +19,6 @@ const requirementExecutions = createSingleFlight()
 const REQUIREMENT_STATUSES = ['new', 'running', 'done', 'archived', 'cancelled']
 const DEFAULT_LIST_STATE = { search: '', status: 'all', favoriteOnly: false, scope: 'title', limit: 10, scrollTop: 0 }
 const LIST_PAGE_SIZE = 10
-const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_SCOPE_TITLE = 'title'
 const SEARCH_SCOPE_FULL = 'full'
 /** Search result state; `scope === ''` means "no full-text result cached yet". */
@@ -38,107 +40,30 @@ export function titleMatches(item, query) {
   return String(item.title || '').toLowerCase().indexOf(needle) >= 0 ||
     String(item.id || '').toLowerCase().indexOf(needle) >= 0
 }
-/**
- * Merge full-text hits onto the local summaries by id so detail/delete still get
- * the complete summary; the hit order returned by the host is preserved.
- */
-export function mergeSearchItems(items, requirements) {
-  const hits = Array.isArray(items) ? items : []
-  const rows = Array.isArray(requirements) ? requirements : []
-  const local = new Map()
-  rows.forEach(function (item) {
-    if (item && item.id) local.set(item.id, item)
-  })
-  const seen = new Set()
-  const merged = []
-  hits.forEach(function (hit) {
-    if (!hit || !hit.id || seen.has(hit.id)) return
-    seen.add(hit.id)
-    const summary = local.get(hit.id)
-    merged.push(summary ? Object.assign({}, summary, hit) : hit)
-  })
-  return merged
-}
-/**
- * Debounced full-text search controller. `schedule` coalesces keystrokes into one
- * request after `delay` ms; only the newest request may emit, and `cancel` drops
- * the pending timer plus every in-flight response (scope switch / unmount).
- */
-export function createFullTextSearch(options) {
-  const opts = options || {}
-  const delay = Number(opts.delay) > 0 ? Number(opts.delay) : SEARCH_DEBOUNCE_MS
-  const timers = opts.timers || { setTimeout: setTimeout, clearTimeout: clearTimeout }
-  const emit = typeof opts.onEvent === 'function' ? opts.onEvent : noop
-  const perform = typeof opts.search === 'function'
-    ? opts.search
-    : function (workspaceId, query) { return api.searchRequirements(workspaceId, query, SEARCH_SCOPE_FULL) }
-  let timer = 0
-  let seq = 0
-  function cancelTimer() {
-    if (timer === 0) return
-    timers.clearTimeout(timer)
-    timer = 0
-  }
-  function start(workspaceId, query) {
-    const token = ++seq
-    emit({ type: 'start', query: query })
-    return Promise.resolve().then(function () {
-      return perform(workspaceId, query)
-    }).then(function (value) {
-      if (token !== seq) return null
-      emit({ type: 'success', query: query, value: value || {} })
-      return value
-    }, function (err) {
-      if (token !== seq) return null
-      emit({ type: 'error', query: query, error: err })
-      return null
-    })
-  }
-  return {
-    /** Debounce a search; a blank query never reaches the host. */
-    schedule(workspaceId, query) {
-      cancelTimer()
-      const trimmed = trimSearch(query)
-      if (!workspaceId || trimmed === '') return
-      timer = timers.setTimeout(function () {
-        timer = 0
-        start(workspaceId, trimmed)
-      }, delay)
-    },
-    /** Search immediately (retry button). */
-    run(workspaceId, query) {
-      cancelTimer()
-      const trimmed = trimSearch(query)
-      if (!workspaceId || trimmed === '') return Promise.resolve(null)
-      return start(workspaceId, trimmed)
-    },
-    /** Drop the pending debounce and mark in-flight responses stale. */
-    cancel() {
-      cancelTimer()
-      seq += 1
-    },
-    pending() { return timer !== 0 },
-  }
-}
 export function ProjectRequirements(props) {
   const t = props.t || translate
   const ui = useUiState()
-  const [detail, setDetail] = useState({ loading: false, error: '', data: null, key: '' })
-  const [createModal, setCreateModal] = useState(null)
-  const [deleteModal, setDeleteModal] = useState(null)
+  const [detail, setDetail] = useState<{ loading: boolean; error: string; data: RequirementDetail | null; key: string }>({ loading: false, error: '', data: null, key: '' })
+  const [createModal, setCreateModal] = useState<{ title: string; body: string; worktree: boolean; busy: boolean; error: string } | null>(null)
+  const [deleteModal, setDeleteModal] = useState<{ item: RequirementSelection & Partial<RequirementSummary>; busy: boolean; error: string } | null>(null)
   const [unlinkBusy, setUnlinkBusy] = useState(false)
-  const [fullSearch, setFullSearch] = useState(EMPTY_FULL_SEARCH)
+  const [fullSearch, setFullSearch] = useState<{
+    scope: string; query: string; loading: boolean; error: string; items: RequirementSearchItem[]; hasMore: boolean; total: number
+  }>(EMPTY_FULL_SEARCH)
   const [favoriteBusyId, setFavoriteBusyId] = useState('')
   const detailSeqRef = useRef(0)
   const createBusyRef = useRef(false)
   const deleteBusyRef = useRef(false)
   const unlinkBusyRef = useRef(false)
-  const favoriteBusyRef = useRef(new Set())
-  const listBodyRef = useRef(null)
+  const favoriteBusyRef = useRef(new Set<string>())
+  const listBodyRef = useRef<HTMLDivElement | null>(null)
   const scrollFrameRef = useRef(0)
-  const searchRef = useRef(null)
+  const searchRef = useRef<FullTextSearch<SearchResult<RequirementSearchItem>> | null>(null)
   if (searchRef.current === null) {
     searchRef.current = createFullTextSearch({
+      search(workspaceId, query) {
+        return api.searchRequirements(workspaceId, query, SEARCH_SCOPE_FULL)
+      },
       onEvent(event) {
         if (event.type === 'start') {
           setFullSearch({
@@ -148,7 +73,7 @@ export function ProjectRequirements(props) {
           return
         }
         if (event.type === 'success') {
-          const value = event.value || {}
+          const value: Partial<SearchResult<RequirementSearchItem>> = event.value || {}
           setFullSearch({
             scope: SEARCH_SCOPE_FULL,
             query: typeof value.query === 'string' && value.query !== '' ? value.query : event.query,
@@ -458,7 +383,9 @@ export function ProjectRequirements(props) {
         }
         return ctx.sessions.create({ workspaceId: item.workspaceId })
       })
-      .then(function (id) {
+      .then(function (result) {
+        if (result.ok === false) throw new Error(result.error.message)
+        const id = result.value.sessionId
         return api.linkSession({ workspaceId: item.workspaceId, id: item.id, sessionId: id })
           .then(function (value) {
             linkedSummary = value && value.requirement ? value.requirement : null
@@ -472,8 +399,9 @@ export function ProjectRequirements(props) {
           content: [{ type: 'text', text: promptText }],
           clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }).then(function (result) {
-          if (result && result.ok === true) { promptSent = true; return id }
-          throw new Error(result && result.error ? result.error.message : t('panel.error'))
+          if (result.ok === false) throw new Error(result.error.message)
+          promptSent = true
+          return id
         })
       })
       .then(function (id) {
@@ -511,7 +439,7 @@ export function ProjectRequirements(props) {
         if (promptSent === false && item.previousStatus && item.previousStatus !== 'running') {
           rollback = api.saveRequirement({
             workspaceId: item.workspaceId, id: item.id, status: item.previousStatus,
-          }).catch(noop)
+          }).then(noop, noop)
         }
         return rollback.then(function () {
           loadDetail({ workspaceId: item.workspaceId, id: item.id }).catch(noop)

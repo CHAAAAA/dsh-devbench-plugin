@@ -1,3 +1,5 @@
+import type { HostContext } from '../context.js'
+import type { McpServerDto, McpServers, McpMutationResult, McpServerInput, McpPhase } from '../../shared/api-types.js'
 /**
  * MCP server management for the active DSH profile (REQ-20261029-002).
  *
@@ -103,7 +105,7 @@ function entryDisabled(entry) {
 }
 
 /** Loader lifecycle phase plus a short failure message when the fiber rejected. */
-function phaseOf(entry) {
+function phaseOf(entry): { phase: McpPhase; error: string } {
   const disabled = entryDisabled(entry)
   if (disabled === null) return { phase: 'failed', error: messages.mcpOperationFailed }
   if (disabled) return { phase: 'disabled', error: '' }
@@ -257,7 +259,7 @@ function addressableIds(ctx) {
   return ids
 }
 
-function serverRecord(entry, context) {
+function serverRecord(entry, context): McpServerDto {
   const config = rowConfig(entry)
   const effective = effectiveConfigOf(entry) || {}
   const transport = TRANSPORTS.includes(config.transport) ? config.transport : ''
@@ -269,7 +271,7 @@ function serverRecord(entry, context) {
   const canEdit = context.configEditorAvailable && addressable && phase.phase === 'active'
   const canDelete = context.patchDoc !== null && inserted !== null
   const canToggle = context.patchDoc !== null
-  let readOnlyReason = ''
+  let readOnlyReason: McpServerDto['readOnlyReason'] = ''
   if (canEdit === false) {
     if (context.configEditorAvailable === false) readOnlyReason = READ_ONLY_UNSUPPORTED
     else if (phase.phase === 'failed') readOnlyReason = 'failed'
@@ -308,7 +310,7 @@ function serverRecord(entry, context) {
 }
 
 /** Empty list result when the running DSH host exposes no profile composition. */
-function unavailableResult(ctx, profile) {
+function unavailableResult(ctx, profile): McpServers {
   return {
     profile: profile === null
       ? null
@@ -455,7 +457,7 @@ function uniqueRowId(doc, entries, serverName) {
 }
 
 /** List the MCP client rows of the active profile. */
-export async function listMcpServers(ctx) {
+export async function listMcpServers(ctx: HostContext): Promise<McpServers> {
   const profile = profileOf(ctx)
   const loader = (function () {
     try {
@@ -830,7 +832,7 @@ function assertUniqueServerName(entries, serverName, ignoreId) {
 }
 
 /** Create a new MCP client row in the profile patch. */
-export async function createMcpServer(ctx, input) {
+export async function createMcpServer(ctx: HostContext, input: { server: McpServerInput }): Promise<McpMutationResult> {
   const state = requireEditablePatch(ctx)
   const payload = isPlainObject(input) ? input.server : undefined
   const server = normalizeServerInput(payload, undefined, false)
@@ -851,7 +853,7 @@ export async function createMcpServer(ctx, input) {
 }
 
 /** Update one MCP client row through the DSH Config Editor. */
-export async function updateMcpServer(ctx, input) {
+export async function updateMcpServer(ctx: HostContext, input: { id: string; server: McpServerInput }): Promise<McpMutationResult> {
   const profile = requireProfile(ctx)
   const editor = service(ctx, 'configEditor')
   if (editor === undefined || editor === null || typeof editor.edit !== 'function') {
@@ -908,7 +910,7 @@ async function runUpdate(ctx, profile, editor, loader, id, input) {
  * Delete a profile patch row, or disable a bundle-provided row when it cannot
  * be removed from the profile patch.
  */
-export async function deleteMcpServer(ctx, input) {
+export async function deleteMcpServer(ctx: HostContext, input: { id: string }): Promise<McpMutationResult> {
   const id = isPlainObject(input) && typeof input.id === 'string' ? input.id : ''
   if (id === '') throw apiError(400, 'mcp-bad-field', messages.mcpServerNotFound)
   const state = requireEditablePatch(ctx)
@@ -951,7 +953,7 @@ export async function deleteMcpServer(ctx, input) {
 }
 
 /** Enable or disable one MCP client row by appending a profile patch override. */
-export async function toggleMcpServer(ctx, input) {
+export async function toggleMcpServer(ctx: HostContext, input: { id: string; enabled: boolean }): Promise<McpMutationResult> {
   const id = isPlainObject(input) && typeof input.id === 'string' ? input.id : ''
   if (id === '') throw apiError(400, 'mcp-bad-field', messages.mcpServerNotFound)
   if (input.enabled !== true && input.enabled !== false) {

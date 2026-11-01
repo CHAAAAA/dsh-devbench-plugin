@@ -1,3 +1,4 @@
+import type { RequirementSummary } from '../../shared/api-types.js'
 /** Requirement store. Atomic IDs, atomic document writes, and workspace-scoped lookup. */
 import { promises as fsp } from 'node:fs'
 import path from 'node:path'
@@ -144,7 +145,7 @@ export async function readRequirement(folderPath, workspaceId) {
   return { meta, body: parsed.body, file, folderPath: folderReal, workspaceId: workspaceId || meta.workspace }
 }
 
-export function toSummary(meta, folderPath, workspaceId) {
+export function toSummary(meta: ReturnType<typeof parseRequirementText>['meta'], folderPath: string, workspaceId: string): RequirementSummary {
   return {
     id: meta.id,
     title: meta.title,
@@ -168,7 +169,7 @@ export function toSummary(meta, folderPath, workspaceId) {
  * 删除标记、点目录与元数据目录的过滤规则与 scanRequirements 完全一致；
  * 需要正文的调用方（全文检索片段、提示词渲染）复用这里的单次读盘结果。
  */
-export async function scanRequirementRecords(folderPath, workspaceId) {
+export async function scanRequirementRecords(folderPath: string, workspaceId: string): Promise<{ summary: RequirementSummary; body: string }[]> {
   const folderStat = await lstatMaybe(folderPath)
   if (folderStat === null) return []
   if (folderStat.isSymbolicLink()) {
@@ -203,7 +204,7 @@ export async function scanRequirementRecords(folderPath, workspaceId) {
   return result
 }
 
-export async function scanRequirements(folderPath, workspaceId) {
+export async function scanRequirements(folderPath: string, workspaceId: string): Promise<RequirementSummary[]> {
   const records = await scanRequirementRecords(folderPath, workspaceId)
   return records.map(function (record) { return record.summary })
 }

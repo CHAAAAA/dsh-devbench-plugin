@@ -1,5 +1,5 @@
 /**
- * Assemble a release: build the client, run preflight, pack, validate the
+ * Assemble a release: build the host and client, run preflight, pack, validate the
  * tarball, and write a checksum manifest next to it.
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -18,6 +18,25 @@ import {
   tarballName,
 } from './util.js'
 import { printPreflight, runPreflight, validatePackEntries } from './preflight.js'
+
+export interface ReleaseManifest {
+  tool: string
+  name: string
+  version: string
+  dshRange: string
+  nodeRange: string
+  tarball: string
+  sizeBytes: number
+  fileCount: number
+  files: string[]
+  sha256: string
+  sha512: string
+  gitCommit: string
+  gitBranch: string
+  builtAt: string
+  node: string
+  npm: string
+}
 
 /** Remove stale tarballs so a publish step can never pick up an old version. */
 function prepareReleaseDir() {
@@ -42,20 +61,13 @@ function parsePackOutput(stdout) {
   }
 }
 
-/**
- * Build, validate, and pack the current package version.
- *
- * @param {object} [options]
- * @param {boolean} [options.skipBuild] reuse the existing dist/client.js
- * @param {boolean} [options.registryCheck] confirm the version is not published yet
- * @returns {object} release manifest
- */
-export function createRelease(options) {
+/** Build, validate, and pack the current package version. */
+export function createRelease(options?: { skipBuild?: boolean, registryCheck?: boolean, registry?: string }): ReleaseManifest {
   const settings = options || {}
   const pkg = loadPackage()
 
   if (settings.skipBuild !== true) {
-    console.log('release-pack: building client bundle')
+    console.log('release-pack: building host and client')
     const build = run('npm', ['run', 'build'], { stdio: 'inherit' })
     if (build.status !== 0) throw new Error('npm run build failed')
   }
@@ -91,8 +103,8 @@ export function createRelease(options) {
     throw new Error('tarball validation failed with ' + packErrors.length + ' problem(s)')
   }
 
-  const tarball = path.join('dist', 'release', filename)
-  const manifest = {
+  const tarball = path.posix.join('dist', 'release', filename)
+  const manifest: ReleaseManifest = {
     tool: 'dsh-devbench-plugin release pipeline',
     name: pkg.name,
     version: pkg.version,
@@ -101,6 +113,7 @@ export function createRelease(options) {
     tarball,
     sizeBytes: fileSize(tarball),
     fileCount: files.length,
+    files,
     sha256: sha256(tarball),
     sha512: sha512Base64(tarball),
     gitCommit: git(['rev-parse', 'HEAD']),
@@ -112,7 +125,7 @@ export function createRelease(options) {
   const manifestPath = path.join(RELEASE_DIR, 'manifest.json')
   writeFileSync(
     manifestPath,
-    JSON.stringify(Object.assign({ files }, manifest), null, 2) + '\n',
+    JSON.stringify(manifest, null, 2) + '\n',
   )
 
   console.log('release-pack: OK')

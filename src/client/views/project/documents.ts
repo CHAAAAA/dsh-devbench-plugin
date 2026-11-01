@@ -9,13 +9,15 @@ import {
   h, getFragment, useState, useEffect, useRef, errorText, t as translate,
 } from '../../runtime.js'
 import * as api from '../../core/api.js'
+import type { SaveDocumentRequest, RequirementSelection, DocumentSummary, DocumentSearchItem, SearchResult } from '../../../shared/api-types.js'
+import type { FullTextSearch } from '../../core/search.js'
 import { setLeaveGuard, clearLeaveGuard } from '../../core/navigation.js'
 import { confirmDialog } from '../../ui/dialogs.js'
 import { Banner, Modal, formatTime } from '../../ui/common.js'
 import { renderMarkdown } from '../../ui/markdown.js'
 import { MarkdownEditor, MarkdownHelp } from '../../ui/markdown-editor.js'
 import { IconFile, IconPlus, IconTrash, IconEdit } from '../../ui/icons.js'
-import { createFullTextSearch, mergeSearchItems } from './requirements.js'
+import { createFullTextSearch, mergeSearchItems } from '../../core/search.js'
 
 const LIST_PAGE_SIZE = 10
 const SEARCH_SCOPE_TITLE = 'title'
@@ -57,10 +59,12 @@ export function ProjectDocuments(props) {
   const configured = props.configured !== false
   const workspace = props.workspace || null
   const workspaceId = workspace ? workspace.workspaceId : ''
-  // Hook order is documented in test/client/render-smoke.test.ts (seedDocumentsHooks).
-  const [list, setList] = useState(EMPTY_LIST)
-  const [selected, setSelected] = useState(null)
-  const [detail, setDetail] = useState(EMPTY_DETAIL)
+  const [list, setList] = useState<{ loading: boolean; error: string; data: DocumentSummary[]; workspaceId: string }>(EMPTY_LIST)
+  const [selected, setSelected] = useState<(RequirementSelection & Partial<DocumentSummary>) | null>(null)
+  const [detail, setDetail] = useState<{
+    loading: boolean; error: string; body: string
+    data: (Pick<DocumentSummary, 'id'> & Partial<DocumentSummary>) | null; key: string
+  }>(EMPTY_DETAIL)
   const [editing, setEditing] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const [bodyDraft, setBodyDraft] = useState('')
@@ -68,16 +72,18 @@ export function ProjectDocuments(props) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [conflict, setConflict] = useState(false)
-  const [createModal, setCreateModal] = useState(null)
-  const [deleteModal, setDeleteModal] = useState(null)
+  const [createModal, setCreateModal] = useState<{ title: string; body: string; busy: boolean; error: string } | null>(null)
+  const [deleteModal, setDeleteModal] = useState<{ doc: RequirementSelection & Partial<DocumentSummary>; busy: boolean; error: string } | null>(null)
   const [search, setSearch] = useState('')
   const [scope, setScope] = useState(SEARCH_SCOPE_TITLE)
   const [limit, setLimit] = useState(LIST_PAGE_SIZE)
-  const [fullSearch, setFullSearch] = useState(EMPTY_FULL_SEARCH)
+  const [fullSearch, setFullSearch] = useState<{
+    scope: string; query: string; loading: boolean; error: string; items: DocumentSearchItem[]; hasMore: boolean; total: number
+  }>(EMPTY_FULL_SEARCH)
   const [markdownHelpOpen, setMarkdownHelpOpen] = useState(false)
   const listSeqRef = useRef(0)
   const detailSeqRef = useRef(0)
-  const searchRef = useRef(null)
+  const searchRef = useRef<FullTextSearch<SearchResult<DocumentSearchItem>> | null>(null)
   const dirtyRef = useRef(false)
   const savingRef = useRef(false)
   const createBusyRef = useRef(false)
@@ -95,7 +101,7 @@ export function ProjectDocuments(props) {
           return
         }
         if (event.type === 'success') {
-          const value = event.value || {}
+          const value: Partial<SearchResult<DocumentSearchItem>> = event.value || {}
           setFullSearch({
             scope: SEARCH_SCOPE_FULL,
             query: typeof value.query === 'string' && value.query !== '' ? value.query : event.query,
@@ -390,7 +396,7 @@ export function ProjectDocuments(props) {
     savingRef.current = true
     setSaving(true)
     setSaveError('')
-    const payload: Record<string, any> = { workspaceId: selected.workspaceId, id: selected.id, title: title, body: bodyDraft }
+    const payload: SaveDocumentRequest = { workspaceId: selected.workspaceId, id: selected.id, title: title, body: bodyDraft }
     const expected = expectedUpdatedAtRef.current !== ''
       ? expectedUpdatedAtRef.current
       : (detail.data && typeof detail.data.updatedAt === 'string' ? detail.data.updatedAt : '')

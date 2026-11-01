@@ -1,3 +1,5 @@
+import type { HostContext } from '../context.js'
+import type * as Api from '../../shared/api-types.js'
 /**
  * Project-level worktree management: list plugin worktrees, inspect changes,
  * AI-assisted commit preview/confirm, push, reveal and remove. Worktrees are
@@ -123,7 +125,7 @@ async function aheadBehind(projectRoot, base, branch) {
   return { ahead: Number(values[1]) || 0, behind: Number(values[0]) || 0, known: true }
 }
 
-function baseWorktreeDto(entry, base, requirement, remote, remotes) {
+function baseWorktreeDto(entry, base, requirement, remote, remotes): Api.ProjectWorktree {
   const found = requirement === undefined || requirement === null ? null : requirement
   return {
     requirementId: entry.requirementId,
@@ -179,7 +181,7 @@ async function worktreeDto(entry, base, requirement, remote, remotes, context: a
 }
 
 /** Row for a worktree-enabled requirement whose directory was never created. */
-function absentWorktreeDto(config, workspace, requirementIdValue, requirement, base, remote, remotes) {
+function absentWorktreeDto(config, workspace, requirementIdValue, requirement, base, remote, remotes): Api.ProjectWorktree {
   const found = requirement === undefined || requirement === null ? null : requirement
   return {
     requirementId: requirementIdValue,
@@ -277,7 +279,7 @@ async function assertRequirementWorktreeIdle(ctx, config, workspace, requirement
 }
 
 /** List the plugin worktrees of a project with requirement and git metadata. */
-export async function listProjectWorktrees(ctx, workspaceId) {
+export async function listProjectWorktrees(ctx: HostContext, workspaceId: string): Promise<Api.ProjectWorktrees> {
   const workspace = getRegisteredWorkspace(ctx, workspaceId)
   const current = await requireProject(ctx, workspaceId)
   const config = await readConfig()
@@ -309,7 +311,7 @@ export async function listProjectWorktrees(ctx, workspaceId) {
 }
 
 /** Changes (files, diff text, head and branch) of a single plugin worktree. */
-export async function readProjectWorktreeChanges(ctx, workspaceId, requirementId) {
+export async function readProjectWorktreeChanges(ctx: HostContext, workspaceId: string, requirementId: string): Promise<Api.WorktreeChanges> {
   const workspace = getRegisteredWorkspace(ctx, workspaceId)
   await requireProject(ctx, workspaceId)
   const config = await readConfig()
@@ -344,7 +346,7 @@ export async function readProjectWorktreeChanges(ctx, workspaceId, requirementId
  * Create the requirement worktree on demand (idempotent) and enable the
  * requirement's worktree switch so later executions run inside it.
  */
-export function createProjectWorktree(ctx, workspaceId, requirementId) {
+export function createProjectWorktree(ctx: HostContext, workspaceId: string, requirementId: string): Promise<{ worktree: Api.RequirementWorktree; requirement: Api.RequirementSummary }> {
   const scope = typeof requirementId === 'string' ? requirementId : ''
   return withKeyLock('project-worktree-create:' + workspaceId + ':' + scope, async function () {
     const workspace = getRegisteredWorkspace(ctx, workspaceId)
@@ -373,7 +375,7 @@ export function createProjectWorktree(ctx, workspaceId, requirementId) {
  * Drop stale worktree registrations whose directories are gone, keeping the
  * `devbench/<id>` branches. Without an id every missing worktree is pruned.
  */
-export function pruneProjectWorktrees(ctx, workspaceId, requirementId) {
+export function pruneProjectWorktrees(ctx: HostContext, workspaceId: string, requirementId?: string): Promise<{ pruned: { requirementId: string; path: string; branch: string }[] }> {
   const scope = typeof requirementId === 'string' ? requirementId : ''
   return withKeyLock('project-worktree-prune:' + workspaceId + ':' + scope, async function () {
     const workspace = getRegisteredWorkspace(ctx, workspaceId)
@@ -427,7 +429,7 @@ export function pruneProjectWorktrees(ctx, workspaceId, requirementId) {
 }
 
 /** Create a commit task for a worktree; conflicts with project commit previews. */
-export function previewProjectWorktreeCommit(ctx, workspaceId, requirementId) {
+export function previewProjectWorktreeCommit(ctx: HostContext, workspaceId: string, requirementId: string): Promise<{ task: Api.TaskDto }> {
   return withKeyLock('project-preview:' + workspaceId, async function () {
     const workspace = getRegisteredWorkspace(ctx, workspaceId)
     const current = await requireProject(ctx, workspaceId)
@@ -470,7 +472,7 @@ export function previewProjectWorktreeCommit(ctx, workspaceId, requirementId) {
 }
 
 /** Confirm a pending worktree commit after re-validating the preview snapshot. */
-export function confirmProjectWorktreeCommit(ctx, workspaceId, taskId, messageInput) {
+export function confirmProjectWorktreeCommit(ctx: HostContext, workspaceId: string, taskId: string, messageInput?: string): Promise<Api.CommitConfirmation & { pushed: boolean; warning: string }> {
   return withProjectTaskLock(taskId, async function () {
     const task = await findTaskRecord(taskId, workspaceId)
     if (task === null || task.kind !== 'commit' ||
@@ -567,7 +569,7 @@ export function confirmProjectWorktreeCommit(ctx, workspaceId, taskId, messageIn
  * process never prompts for credentials (fails fast instead of hanging) and
  * remote output is sanitized before being returned.
  */
-export function pushProjectWorktree(ctx, workspaceId, requirementId) {
+export function pushProjectWorktree(ctx: HostContext, workspaceId: string, requirementId: string): Promise<Api.PushResult> {
   return withKeyLock('project-worktree-push:' + workspaceId + ':' + requirementId,
     async function () {
       const workspace = getRegisteredWorkspace(ctx, workspaceId)
@@ -618,7 +620,7 @@ function safeCount(value) {
  * Open the worktree directory in the OS file manager or a supported launcher
  * (available launchers are reported by `GET /project/open-targets`).
  */
-export async function revealProjectWorktree(ctx, workspaceId, requirementId, launcher) {
+export async function revealProjectWorktree(ctx: HostContext, workspaceId: string, requirementId: string, launcher?: string): Promise<{ opened: boolean; path: string; target: Api.OpenTarget }> {
   const workspace = getRegisteredWorkspace(ctx, workspaceId)
   await requireProject(ctx, workspaceId)
   const config = await readConfig()
@@ -631,7 +633,7 @@ export async function revealProjectWorktree(ctx, workspaceId, requirementId, lau
     if (error && error.code && error.status) throw error
     throw apiError(500, 'worktree-reveal-failed', messages.worktreeRevealFailed)
   }
-  return { opened: true, path: entry.path, target }
+  return { opened: true, path: entry.path, target: target as Api.OpenTarget }
 }
 
 /**
@@ -640,7 +642,7 @@ export async function revealProjectWorktree(ctx, workspaceId, requirementId, lau
  * requirement document's worktree switch is left untouched, so the next
  * execution recreates the directory.
  */
-export function removeProjectWorktree(ctx, workspaceId, requirementId) {
+export function removeProjectWorktree(ctx: HostContext, workspaceId: string, requirementId: string): Promise<{ removed: boolean; pruned: boolean; branch: string; path: string; requirementId: string }> {
   return withKeyLock('project-worktree-remove:' + workspaceId + ':' + requirementId,
     async function () {
       const workspace = getRegisteredWorkspace(ctx, workspaceId)

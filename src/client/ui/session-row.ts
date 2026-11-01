@@ -1,19 +1,27 @@
 /** Linked session row plus the no-op session store used outside DSH. */
 import { h, useCallback, useSyncExternalStore } from '../runtime.js'
-const EMPTY = { byId: {} }
+import type { ReactElement } from 'react'
+import type { Translate } from '../runtime.js'
+export interface SessionSummary { title?: string; displayTitle?: string; running?: boolean }
+export interface SessionsSnapshot { phase?: string; byId: Record<string, SessionSummary> }
+export type SessionsHook = <T>(selector: (snapshot: SessionsSnapshot) => T) => T
+const EMPTY: SessionsSnapshot = { byId: {} }
 function emptySubscribe() { return function () {} }
 function emptySnapshot() { return EMPTY }
-export function useEmptySessions(selector) {
+export function useEmptySessions<T>(selector: (snapshot: SessionsSnapshot) => T): T {
   const snapshot = useSyncExternalStore(emptySubscribe, emptySnapshot, emptySnapshot)
   return selector(snapshot)
 }
-export function useSessionSummary(useSessions, sessionId) {
-  const selector = useCallback(function (snapshot) {
+export function useSessionSummary(useSessions: SessionsHook, sessionId: string): SessionSummary | null {
+  const selector = useCallback(function (snapshot: SessionsSnapshot) {
     return snapshot.byId[sessionId] || null
   }, [sessionId])
   return useSessions(selector)
 }
-export function SessionRow(props) {
+export function SessionRow(props: {
+  t: Translate; sessionId: string; useSessions?: SessionsHook; disabled?: boolean
+  onOpen?: () => void; onUnlink?: () => void
+}): ReactElement {
   const t = props.t
   const sessionsHook = props.useSessions || useEmptySessions
   const summary = useSessionSummary(sessionsHook, props.sessionId)

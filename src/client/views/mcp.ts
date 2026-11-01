@@ -10,6 +10,9 @@ import {
   h, useState, useEffect, useRef, errorText, isAbortError, t as translate,
 } from '../runtime.js'
 import * as api from '../core/api.js'
+import type { McpServerInput, SaveMcpServerRequest, McpServers } from '../../shared/api-types.js'
+import type { ChangeEvent, ReactElement } from 'react'
+import type { Translate } from '../runtime.js'
 import { MCP_CLIENT_MODULE, MCP_SECRET_MASK, MCP_SAVE_TIMEOUT_MS } from '../../shared/protocol.js'
 import { Banner } from '../ui/common.js'
 import { confirmDialog } from '../ui/dialogs.js'
@@ -18,6 +21,22 @@ import { IconPlus, IconRefresh } from '../ui/icons.js'
 const TRANSPORT_STDIO = 'stdio'
 const TRANSPORT_HTTP = 'streamable-http'
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
+interface McpForm {
+  mode: 'create' | 'update'
+  id: string
+  serverName: string
+  transport: 'stdio' | 'streamable-http'
+  command: string
+  argsText: string
+  cwd: string
+  envText: string
+  url: string
+  headersText: string
+  failOnStartupError: boolean
+  toolCallTimeoutMs: string
+  saving: boolean
+  error: string
+}
 const PHASE_KEYS = {
   active: 'mcp.phase.active',
   disabled: 'mcp.phase.disabled',
@@ -153,7 +172,7 @@ function parseTimeout(value) {
 }
 
 /** Blank editor form. */
-export function emptyMcpForm(mode) {
+export function emptyMcpForm(mode: string): McpForm {
   return {
     mode: mode === 'update' ? 'update' : 'create',
     id: '',
@@ -192,13 +211,13 @@ export function serverToForm(server) {
 }
 
 /** Form values → server payload (fields of the unused transport are dropped). */
-export function formToServer(form) {
+export function formToServer(form: Partial<McpForm>): McpServerInput {
   const value = form && typeof form === 'object' ? form : {}
   const transport = value.transport === TRANSPORT_HTTP ? TRANSPORT_HTTP : TRANSPORT_STDIO
   const stdio = transport === TRANSPORT_STDIO
   const env = parseKeyValueLines(value.envText)
   const headers = parseKeyValueLines(value.headersText)
-  const server: Record<string, any> = {
+  const server: McpServerInput = {
     serverName: safeText(value.serverName).trim(),
     transport: transport,
     command: stdio ? safeText(value.command).trim() : '',
@@ -215,12 +234,11 @@ export function formToServer(form) {
 }
 
 /** Mode/id + server for POST /mcp/save; masked secrets are passed through. */
-export function buildSavePayload(form) {
+export function buildSavePayload(form: Partial<McpForm>): SaveMcpServerRequest {
   const value = form && typeof form === 'object' ? form : {}
   const mode = value.mode === 'update' ? 'update' : 'create'
-  const payload: Record<string, any> = { mode: mode, server: formToServer(value) }
-  if (mode === 'update') payload.id = safeText(value.id)
-  return payload
+  const server = formToServer(value)
+  return mode === 'update' ? { mode, id: safeText(value.id), server } : { mode, server }
 }
 
 /** True for Loader expression source (`!!js ...`), which the host stores verbatim. */
@@ -280,17 +298,14 @@ function configTextOf(server) {
   }
 }
 
-/**
- * MCP management page. Hook order (seeded by test/client/mcp.test.ts):
- * 0 state, 1 expandedId, 2 busyId, 3 editor, 4 load seq ref, 5 initial load.
- */
-export function McpView(props) {
+/** MCP management page. */
+export function McpView(props: { t?: Translate; showToast?: (kind: string, text: string) => void }): ReactElement {
   const t = props.t || translate
   const showToast = typeof props.showToast === 'function' ? props.showToast : function () {}
-  const [state, setState] = useState({ loading: true, error: '', data: null })
+  const [state, setState] = useState<{ loading: boolean; error: string; data: McpServers | null }>({ loading: true, error: '', data: null })
   const [expandedId, setExpandedId] = useState('')
   const [busyId, setBusyId] = useState('')
-  const [editor, setEditor] = useState(null)
+  const [editor, setEditor] = useState<McpForm | null>(null)
   const loadSeqRef = useRef(0)
 
   const data = state.data && typeof state.data === 'object' ? state.data : null
@@ -549,7 +564,7 @@ export function McpView(props) {
         value: editor.serverName,
         disabled: editor.saving,
         placeholder: 'my-mcp-server',
-        onChange(event) { updateEditor({ serverName: event.target.value }) },
+        onChange(event: ChangeEvent<HTMLInputElement>) { updateEditor({ serverName: event.target.value }) },
       }),
       t('mcp.form.nameHint')))
     fields.push(renderField('transport', t('mcp.form.transport'),
@@ -557,7 +572,7 @@ export function McpView(props) {
         className: 'devbench-input',
         value: editor.transport,
         disabled: editor.saving,
-        onChange(event) { updateEditor({ transport: event.target.value }) },
+        onChange(event: ChangeEvent<HTMLSelectElement>) { updateEditor({ transport: event.target.value }) },
       },
       h('option', { value: TRANSPORT_STDIO }, t('mcp.transport.stdio')),
       h('option', { value: TRANSPORT_HTTP }, t('mcp.transport.http')))))
@@ -568,7 +583,7 @@ export function McpView(props) {
           value: editor.command,
           disabled: editor.saving,
           placeholder: 'node',
-          onChange(event) { updateEditor({ command: event.target.value }) },
+          onChange(event: ChangeEvent<HTMLInputElement>) { updateEditor({ command: event.target.value }) },
         })))
       fields.push(renderField('args', t('mcp.form.args'),
         h('textarea', {
@@ -577,7 +592,7 @@ export function McpView(props) {
           value: editor.argsText,
           disabled: editor.saving,
           placeholder: '/path/to/server.js',
-          onChange(event) { updateEditor({ argsText: event.target.value }) },
+          onChange(event: ChangeEvent<HTMLTextAreaElement>) { updateEditor({ argsText: event.target.value }) },
         }),
         t('mcp.form.argsHint')))
       fields.push(renderField('cwd', t('mcp.form.cwd'),
@@ -586,7 +601,7 @@ export function McpView(props) {
           value: editor.cwd,
           disabled: editor.saving,
           placeholder: t('mcp.form.cwdPlaceholder'),
-          onChange(event) { updateEditor({ cwd: event.target.value }) },
+          onChange(event: ChangeEvent<HTMLInputElement>) { updateEditor({ cwd: event.target.value }) },
         })))
       fields.push(renderField('env', t('mcp.form.env'),
         h('textarea', {
@@ -595,7 +610,7 @@ export function McpView(props) {
           value: editor.envText,
           disabled: editor.saving,
           placeholder: 'API_KEY=...',
-          onChange(event) { updateEditor({ envText: event.target.value }) },
+          onChange(event: ChangeEvent<HTMLTextAreaElement>) { updateEditor({ envText: event.target.value }) },
         }),
         t('mcp.form.envHint', { mask: MCP_SECRET_MASK })))
     } else {
@@ -605,7 +620,7 @@ export function McpView(props) {
           value: editor.url,
           disabled: editor.saving,
           placeholder: 'https://example.com/mcp',
-          onChange(event) { updateEditor({ url: event.target.value }) },
+          onChange(event: ChangeEvent<HTMLInputElement>) { updateEditor({ url: event.target.value }) },
         }),
         t('mcp.form.urlHint')))
       fields.push(renderField('headers', t('mcp.form.headers'),
@@ -615,7 +630,7 @@ export function McpView(props) {
           value: editor.headersText,
           disabled: editor.saving,
           placeholder: 'Authorization=Bearer ...',
-          onChange(event) { updateEditor({ headersText: event.target.value }) },
+          onChange(event: ChangeEvent<HTMLTextAreaElement>) { updateEditor({ headersText: event.target.value }) },
         }),
         t('mcp.form.headersHint', { mask: MCP_SECRET_MASK })))
     }
@@ -728,11 +743,11 @@ export function McpView(props) {
 
 /**
  * Home page overview of the profile's MCP servers. Loads independently so a
- * failure cannot affect the rest of the dashboard. Hook order: 0 state, 1 load.
+ * failure cannot affect the rest of the dashboard.
  */
-export function HomeMcpPanel(props) {
+export function HomeMcpPanel(props: { t?: Translate; onOpenMcp?: () => void }): ReactElement {
   const t = props.t || translate
-  const [state, setState] = useState({ loading: true, error: '', data: null })
+  const [state, setState] = useState<{ loading: boolean; error: string; data: McpServers | null }>({ loading: true, error: '', data: null })
   useEffect(function () {
     let cancelled = false
     api.getMcpServers().then(function (value) {

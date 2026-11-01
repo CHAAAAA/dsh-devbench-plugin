@@ -1,3 +1,5 @@
+import type { HostContext } from '../context.js'
+import type { ConfigDto, StateDto, WorkspaceDto } from '../../shared/api-types.js'
 /** Builds the state DTO from registry workspaces and persisted mappings. */
 import { promises as fsp } from 'node:fs'
 import {
@@ -16,7 +18,7 @@ import {
   resolveWorkspaceFolder,
 } from '../storage/workspaces.js'
 
-export async function buildState(ctx, config) {
+export async function buildState(ctx: HostContext, config: ConfigDto): Promise<StateDto> {
   const workspaces = typeof ctx.workspaceRegistry.list === 'function'
     ? ctx.workspaceRegistry.list()
     : []
@@ -36,7 +38,7 @@ export async function buildState(ctx, config) {
     if (workspaceId.length === 0) continue
     activeTaskCounts.set(workspaceId, (activeTaskCounts.get(workspaceId) || 0) + 1)
   }
-  const workspaceDtos = []
+  const workspaceDtos: WorkspaceDto[] = []
   for (const workspace of workspaces) {
     const entry = getWorkspaceEntry(mapping, workspace.id)
     const folder = entry === null ? null : entry.folder

@@ -8,6 +8,7 @@
  */
 import { h, useState, useEffect, useRef, errorText, isAbortError } from '../../runtime.js'
 import * as api from '../../core/api.js'
+import type { WorkspaceChanges } from '../../../shared/api-types.js'
 import { Banner } from '../../ui/common.js'
 import { confirmDialog } from '../../ui/dialogs.js'
 import { IconRefresh } from '../../ui/icons.js'
@@ -23,7 +24,7 @@ export function WorkspaceChangesPanel(props) {
   const t = props.t
   const workspaceId = props.workspaceId
   const activeCommitTask = props.activeCommitTask || null
-  const [state, setState] = useState(EMPTY_STATE)
+  const [state, setState] = useState<{ loading: boolean; error: string; data: WorkspaceChanges | null; key: string }>(EMPTY_STATE)
   const [busy, setBusy] = useState('')
   const [commitOpen, setCommitOpen] = useState(false)
   const [message, setMessage] = useState('')
@@ -247,7 +248,7 @@ export function WorkspaceChangesPanel(props) {
       setCommitting(true)
       return api.manualProjectCommit({ workspaceId: workspaceId, message: trimmed }, { timeoutMs: 120000 })
         .then(function (result) {
-          const commit = result && result.commit ? result.commit : {}
+          const commit = result.commit
           const short = String(commit.short || commit.hash || '').slice(0, 8)
           showToast('info', t('tabs.overview.commitSuccess', { short: short }))
           setMessage('')

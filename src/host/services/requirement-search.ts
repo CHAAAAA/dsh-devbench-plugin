@@ -1,3 +1,5 @@
+import type { HostContext } from '../context.js'
+import type { ConfigDto, RequirementSummary, SearchScope, SearchMatch, SearchResult, RequirementSearchItem } from '../../shared/api-types.js'
 /**
  * 需求检索服务。
  *
@@ -60,7 +62,7 @@ function searchLimit(value) {
  * @param {{ q?: string, scope?: string, limit?: string|number }} options
  * @returns {{ query: string, scope: 'title'|'full', limit: number }}
  */
-export function normalizeSearchOptions(options) {
+export function normalizeSearchOptions(options?: { q?: unknown; scope?: unknown; limit?: unknown }): { query: string; scope: SearchScope; limit: number } {
   const input = options || {}
   const query = optionText(input.q).trim()
   if (query.length > MAX_SEARCH_QUERY_LENGTH) {
@@ -68,7 +70,7 @@ export function normalizeSearchOptions(options) {
   }
   const requestedScope = optionText(input.scope).trim()
   const scope = requestedScope.length === 0 ? 'title' : requestedScope
-  if (SEARCH_SCOPES.includes(scope) === false) {
+  if (scope !== 'title' && scope !== 'full') {
     throw apiError(400, 'bad-search-scope', messages.badSearchScope)
   }
   return { query, scope, limit: searchLimit(input.limit) }
@@ -84,7 +86,7 @@ export function normalizeSearchOptions(options) {
  * @param {number} queryLength 检索词长度（字符数）。
  * @returns {string}
  */
-export function buildMatchSnippet(body, matchIndex, queryLength) {
+export function buildMatchSnippet(body: string, matchIndex: number, queryLength: number): string {
   const source = typeof body === 'string' ? body : ''
   const index = Math.max(0, Math.min(matchIndex, source.length))
   const length = Math.max(0, queryLength)
@@ -109,9 +111,9 @@ export function buildMatchSnippet(body, matchIndex, queryLength) {
 }
 
 /** 判断一条需求记录是否命中，返回契约里的 match 结构；未命中返回 null。 */
-function matchRequirement(record, query, scope) {
+function matchRequirement(record: { summary: RequirementSummary; body: string }, query: string, scope: SearchScope): SearchMatch | null {
   const needle = query.toLowerCase()
-  const summary = record.summary || {}
+  const summary: Partial<RequirementSummary> = record.summary || {}
   const title = typeof summary.title === 'string' ? summary.title : ''
   if (title.toLowerCase().includes(needle)) return { field: 'title', snippet: '' }
   const id = typeof summary.id === 'string' ? summary.id : ''
@@ -123,8 +125,8 @@ function matchRequirement(record, query, scope) {
   return { field: 'body', snippet: buildMatchSnippet(body, index, needle.length) }
 }
 
-function toSearchItem(record, match) {
-  const summary = record.summary || {}
+function toSearchItem(record: { summary: RequirementSummary }, match: SearchMatch): RequirementSearchItem {
+  const summary: Partial<RequirementSummary> = record.summary || {}
   return {
     id: summary.id,
     title: summary.title,
@@ -145,7 +147,7 @@ function toSearchItem(record, match) {
  * @param {{ q?: string, scope?: 'title'|'full', limit?: string|number }} options
  * @returns {Promise<{ query: string, scope: string, total: number, hasMore: boolean, items: object[] }>}
  */
-export async function searchWorkspaceRequirements(ctx, config, workspaceId, options = {}) {
+export async function searchWorkspaceRequirements(ctx: HostContext, config: ConfigDto, workspaceId: string, options: { q?: unknown; scope?: unknown; limit?: unknown } = {}): Promise<SearchResult<RequirementSearchItem>> {
   const { query, scope, limit } = normalizeSearchOptions(options)
   getRegisteredWorkspace(ctx, workspaceId)
   const empty = { query, scope, total: 0, hasMore: false, items: [] }

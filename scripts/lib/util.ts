@@ -118,12 +118,12 @@ export function git(args) {
   return capture('git', args)
 }
 
-export function sha256(relative) {
-  return createHash('sha256').update(readText(relative)).digest('hex')
+export function sha256(relative: string): string {
+  return createHash('sha256').update(readFileSync(abs(relative))).digest('hex')
 }
 
-export function sha512Base64(relative) {
-  return createHash('sha512').update(readText(relative)).digest('base64')
+export function sha512Base64(relative: string): string {
+  return createHash('sha512').update(readFileSync(abs(relative))).digest('base64')
 }
 
 export function fileSize(relative) {

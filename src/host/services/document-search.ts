@@ -1,3 +1,4 @@
+import type { DocumentSummary, SearchScope, SearchMatch, SearchResult, DocumentSearchItem } from '../../shared/api-types.js'
 /**
  * 项目文档检索服务。
  *
@@ -9,9 +10,9 @@ import { scanDocumentRecords } from '../domain/documents.js'
 import { buildMatchSnippet, normalizeSearchOptions } from './requirement-search.js'
 
 /** 判断一条文档记录是否命中，返回契约里的 match 结构；未命中返回 null。 */
-function matchDocument(record, query, scope) {
+function matchDocument(record: { summary: DocumentSummary; body: string }, query: string, scope: SearchScope): SearchMatch | null {
   const needle = query.toLowerCase()
-  const summary = record.summary || {}
+  const summary: Partial<DocumentSummary> = record.summary || {}
   const title = typeof summary.title === 'string' ? summary.title : ''
   if (title.toLowerCase().includes(needle)) return { field: 'title', snippet: '' }
   if (scope !== 'full') return null
@@ -21,8 +22,8 @@ function matchDocument(record, query, scope) {
   return { field: 'body', snippet: buildMatchSnippet(body, index, needle.length) }
 }
 
-function toSearchItem(record, match) {
-  const summary = record.summary || {}
+function toSearchItem(record: { summary: DocumentSummary }, match: SearchMatch): DocumentSearchItem {
+  const summary: Partial<DocumentSummary> = record.summary || {}
   return {
     id: summary.id,
     title: summary.title,
@@ -41,7 +42,7 @@ function toSearchItem(record, match) {
  * @param {{ q?: string, scope?: 'title'|'full', limit?: string|number }} options
  * @returns {Promise<{ query: string, scope: string, total: number, hasMore: boolean, items: object[] }>}
  */
-export async function searchWorkspaceDocuments(folderPath, options = {}) {
+export async function searchWorkspaceDocuments(folderPath: string | null, options: { q?: unknown; scope?: unknown; limit?: unknown } = {}): Promise<SearchResult<DocumentSearchItem>> {
   const { query, scope, limit } = normalizeSearchOptions(options)
   const empty = { query, scope, total: 0, hasMore: false, items: [] }
   if (query.length === 0) return empty

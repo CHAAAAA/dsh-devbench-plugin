@@ -2,12 +2,15 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import vm from 'node:vm'
-import { initRuntime } from '../../src/client/runtime.js'
+import { initRuntime, setRuntimeContext } from '../../src/client/runtime.js'
+import type { ClientContext } from '../../src/client/runtime.js'
+import type { FileResult, RequirementDetail, RequirementSummary } from '../../src/shared/api-types.js'
 import { createLatestRequest, createSingleFlight, createSerialQueue, pathInside } from '../../src/client/core/async.js'
 import { sanitizeHref, renderMarkdown } from '../../src/client/ui/markdown.js'
 import { zh, en } from '../../src/client/i18n/index.js'
 import { request } from '../../src/client/core/api.js'
 import { createPlugin } from '../../src/client/plugin.js'
+import { DevbenchIcon } from '../../src/client/ui/icons.js'
 import { formatShortTime } from '../../src/client/ui/common.js'
 import { uiStore, resetUiStore, setSelection, setListState, resetListState } from '../../src/client/core/ui-store.js'
 import { setLeaveGuard, clearLeaveGuard, navigateView, hasLeaveGuard } from '../../src/client/core/navigation.js'
@@ -223,16 +226,23 @@ test('api request unwraps values, preserves error codes and times out', async fu
 test('plugin keeps DSH inject and slot registration contract', function () {
   const registered = []
   let dictionaries = null
-  const ctx = {
+  const ctx: ClientContext = {
     effect(fn) { fn() },
     locale: {
-      register(ns, value) { dictionaries = { ns: ns, value: value } },
+      register(ns, value) { dictionaries = { ns: ns, value: value }; return function () {} },
       bind() { return function (key) { return key } },
     },
     slots: {
       inject(name, fn) { fn() },
-      register(config, component) { registered.push({ config: config, component: component }); return {} },
+      register(config, component) { registered.push({ config: config, component: component }); return function () {} },
     },
+    layout: { selectPanel() {} },
+    uiWorkspace: { async pickDirectory() { return null }, openSession() {} },
+    sessions: { async create() { return { ok: true, value: { sessionId: 'session-1' } } } },
+    remote: { session: {
+      async prompt() { return { ok: true, value: undefined } },
+      async rename() { return { ok: true, value: undefined } },
+    } },
   }
   const plugin = createPlugin()
   assert.equal(plugin.inject.includes('remote.session'), true)
@@ -242,193 +252,240 @@ test('plugin keeps DSH inject and slot registration contract', function () {
   assert.equal(registered[0].config.key, 'devbench')
   assert.equal(registered[1].config.id, 'devbench')
   assert.equal(registered[2].config.id, 'devbench-link')
+  assert.equal(registered[1].component, DevbenchIcon)
+  setRuntimeContext(null)
 })
 test('built client preserves module loader id and externalizes react', function () {
   const code = fs.readFileSync('dist/client.js', 'utf8')
-  assert.equal(code.includes('__ModuleLoader__.load'), true)
-  assert.equal(code.includes(pkg.name), true)
-  assert.equal(code.includes('factory(require)'), true)
-  assert.equal(code.includes('require("react")'), true)
-  assert.equal(code.includes('import '), false)
   let definition = null
-  const window = { __ModuleLoader__: { load(value) { definition = value } } }
+  let registrations = 0
+  const window = { __ModuleLoader__: { load(value) { definition = value; registrations += 1 } } }
   const sandbox = {
     window: window, console: console, setTimeout: setTimeout, clearTimeout: clearTimeout,
     AbortController: AbortController, URL: URL, Intl: Intl,
   }
-  vm.runInNewContext(code, sandbox, { filename: 'dist/client.js' })
+  vm.runInNewContext(code, sandbox, { filename: 'dist/client.js', timeout: 1000 })
+  assert.equal(registrations, 1)
   assert.equal(definition.id, pkg.name)
+  assert.equal(typeof definition.factory, 'function')
+  const requiredModules = []
   const plugin = definition.factory(function (name) {
-    assert.equal(name, 'react')
+    requiredModules.push(name)
     return fakeReact
   })
+  assert.deepEqual(requiredModules, ['react'])
+  assert.equal(typeof plugin.apply, 'function')
   assert.deepEqual(Array.from(plugin.inject), ['slots', 'locale', 'layout', 'uiWorkspace', 'sessions', 'remote', 'remote.session'])
 })
-test('critical race guards remain wired in the source modules', function () {
-  const page = fs.readFileSync('src/client/views/project/devbench.ts', 'utf8')
-  const requirements = fs.readFileSync('src/client/views/project/requirements.ts', 'utf8')
-  const sidebar = fs.readFileSync('src/client/views/project/sidebar.ts', 'utf8')
-  const detail = fs.readFileSync('src/client/views/project/requirement-detail.ts', 'utf8')
-  const worktrees = fs.readFileSync('src/client/views/project/worktrees.ts', 'utf8')
-  const listPage = fs.readFileSync('src/client/ui/list-page.ts', 'utf8')
-  const home = fs.readFileSync('src/client/views/home.ts', 'utf8')
-  const tasks = fs.readFileSync('src/client/views/project/tasks.ts', 'utf8')
-  const reviews = fs.readFileSync('src/client/views/project/reviews.ts', 'utf8')
-  const commitsView = fs.readFileSync('src/client/views/project/commits.ts', 'utf8')
-  const overviewView = fs.readFileSync('src/client/views/project/overview.ts', 'utf8')
-  const workspaceChanges = fs.readFileSync('src/client/views/project/workspace-changes.ts', 'utf8')
-  const settingsView = fs.readFileSync('src/client/views/settings.ts', 'utf8')
-  const diffBrowser = fs.readFileSync('src/client/ui/commit-diff-browser.ts', 'utf8')
-  const confirmModal = fs.readFileSync('src/client/ui/commit-confirm-modal.ts', 'utf8')
-  const hostState = fs.readFileSync('src/host/services/state.ts', 'utf8')
-  const background = fs.readFileSync('src/host/services/background-agent.ts', 'utf8')
-  const tree = fs.readFileSync('src/client/ui/file-tree.ts', 'utf8')
-  const action = fs.readFileSync('src/client/views/project/session-action.ts', 'utf8')
-  const apiSource = fs.readFileSync('src/client/core/api.ts', 'utf8')
-  const uiStoreSource = fs.readFileSync('src/client/core/ui-store.ts', 'utf8')
-  const projectStyles = fs.readFileSync('src/client/ui/styles-project.ts', 'utf8')
-  assert.equal(page.includes('stateSeqRef.current !== seq'), true)
-  assert.equal(page.includes('overviewSeqRef.current !== seq'), true)
-  assert.equal(page.includes('tasksGateRef.current.begin()'), true)
-  assert.equal(page.includes('tasksGateRef.current.finish(controller)'), true)
-  assert.equal(page.includes('activeCommitTask === null'), true)
-  assert.equal(page.includes('setInterval'), true)
-  assert.equal(page.includes('2000'), true)
-  assert.equal(page.includes('findAwaitingCommitTask'), true)
-  assert.equal(page.includes('confirmBusyRef.current'), true)
-  assert.equal(page.includes('cancelBusyRef.current'), true)
-  assert.equal(page.includes('previewBusyRef.current'), true)
-  assert.equal(page.includes('addBusyRef.current'), true)
-  assert.equal(page.includes('gitBusyRef.current'), true)
-  assert.equal(requirements.includes('detailSeqRef.current !== seq'), true)
-  assert.equal(requirements.includes('requirementExecutions.run'), true)
-  assert.equal(requirements.includes('createBusyRef.current'), true)
-  assert.equal(requirements.includes('unlinkBusyRef.current'), true)
-  assert.equal(requirements.includes('deleteBusyRef.current'), true)
-  assert.equal(requirements.includes("ctx.sessions.create({ workspaceId: item.workspaceId })"), true)
-  assert.equal(requirements.includes("ctx.sessions.create({ cwd: result.cwd })"), true)
-  assert.equal(requirements.includes('result.worktree'), true)
-  assert.equal(requirements.includes("item.status === 'running'"), true)
-  assert.equal(requirements.includes('Promise.allSettled([loadDetail(selectedNext), reloadState(), reloadTasks])'), true)
-  assert.equal(requirements.includes('api.recordRequirementTask'), true)
-  // REQ-20261028-001: title/full-text requirement search wiring.
-  assert.equal(apiSource.includes("'/requirement/search?'"), true)
-  assert.equal(apiSource.includes('export function searchRequirements'), true)
-  assert.equal(uiStoreSource.includes("scope: 'title'"), true)
-  assert.equal(requirements.includes('SEARCH_DEBOUNCE_MS = 250'), true)
-  assert.equal(requirements.includes('createFullTextSearch'), true)
-  assert.equal(requirements.includes('api.searchRequirements'), true)
-  assert.equal(requirements.includes('mergeSearchItems'), true)
-  assert.equal(requirements.includes('remoteResult.hasMore === true'), true)
-  assert.equal(requirements.includes('project.requirements.search.hasMore'), true)
-  assert.equal(requirements.includes('project.requirements.search.loading'), true)
-  assert.equal(requirements.includes('project.requirements.search.retry'), true)
-  assert.equal(requirements.includes('project.requirements.search.scope'), true)
-  assert.equal(projectStyles.includes('.devbench-master-row-snippet{'), true)
-  assert.equal(projectStyles.includes('.devbench-search-scope{'), true)
-  assert.equal(page.includes("onReloadTasks: function () { return loadTasks(currentWorkspace.workspaceId) }"), true)
-  assert.equal(page.includes("ui.view === 'home'"), true)
-  assert.equal(page.includes('HomeView'), true)
-  assert.equal(page.includes("activeTab === 'commits'"), true)
-  assert.equal(page.includes('workspaceId: selectedProjectId'), true)
-  assert.equal(page.includes('ProjectWorktrees'), true)
-  assert.equal(page.includes('refreshAfterCommit(selectedProjectId)'), true)
-  assert.equal((page.match(/revision: worktreeRevision/g) || []).length, 2)
-  assert.equal(page.includes("['worktrees', 'project.tab.worktrees']"), true)
-  assert.equal(page.includes('confirmWorktreeCommit'), true)
-  assert.equal(page.includes('worktreeRevision'), true)
-  assert.equal(page.includes("const inProjectView = uiStore.state.view === 'project'"), true)
-  assert.equal(page.includes('if (current === workspaceId && inProjectView)'), true)
-  assert.equal(page.includes('onWorktreeCommitTask'), true)
-  assert.equal(sidebar.includes('props.onHome'), true)
-  assert.equal(sidebar.includes('devbench-project-activity-dot'), true)
-  assert.equal(hostState.includes('activeTaskCount'), true)
-  // REQ-20261028-003: configurable commit prompt template is persisted and exposed in /state.
-  assert.equal(hostState.includes('commitPromptTemplate'), true)
-  assert.equal(hostState.includes('defaultCommitPromptTemplate'), true)
-  assert.equal(settingsView.includes('commitTemplateProblem'), true)
-  assert.equal(settingsView.includes('commitPromptTemplate: commitTemplate'), true)
-  assert.equal(settingsView.includes('defaultCommitPromptTemplate'), true)
-  assert.equal(settingsView.includes('resetCommitTemplate'), true)
-  assert.equal(background.includes('workspace.attachSession(sessionId)'), true)
-  assert.equal(detail.includes('createSerialQueue()'), true)
-  assert.equal(detail.includes('saveFields({ status: status })'), true)
-  assert.equal(detail.includes('saveBeforeExecute'), true)
-  assert.equal(detail.includes("key: 'tree-' + key + '-' + fileRevision"), true)
-  assert.equal(detail.includes('loadGitLog'), false)
-  assert.equal(detail.includes('detail.git.settingsOnly'), false)
-  assert.equal(detail.includes("detailTabButton('git'"), false)
-  assert.equal(detail.includes('detail.commits'), true)
-  assert.equal(detail.includes('linkRequirementCommit'), true)
-  assert.equal(commitsView.includes('getProjectCommitDetail'), true)
-  assert.equal(commitsView.includes('CommitDiffBrowser'), true)
-  assert.equal(commitsView.includes("className: 'devbench-tab-fill'"), true)
-  // REQ-20261028-003: the working-tree panel moved from the commits tab to the overview tab.
-  assert.equal(commitsView.includes('WorkspaceChangesPanel'), false)
-  assert.equal(commitsView.includes('activeCommitTask: props.activeCommitTask'), false)
-  assert.equal(overviewView.includes('WorkspaceChangesPanel'), true)
-  assert.equal(overviewView.includes('workspaceId: props.workspaceId'), true)
-  assert.equal(overviewView.includes('activeCommitTask: props.activeCommitTask'), true)
-  assert.equal(page.includes("activeTab === 'overview'"), true)
-  assert.equal(workspaceChanges.includes('getProjectChanges'), true)
-  assert.equal(workspaceChanges.includes('manualProjectCommit'), true)
-  assert.equal(workspaceChanges.includes('pullProject'), true)
-  assert.equal(workspaceChanges.includes('pushProject'), true)
-  assert.equal(workspaceChanges.includes('seqRef.current !== seq'), true)
-  assert.equal(workspaceChanges.includes('data.initialized !== true'), true)
-  assert.equal(workspaceChanges.includes('confirmDialog'), true)
-  assert.equal(workspaceChanges.includes('project.worktrees.noChanges'), true)
-  assert.equal(workspaceChanges.includes('tabs.overview.workspace'), true)
-  assert.equal(workspaceChanges.includes('tabs.commits.workspace'), false)
-  assert.equal(diffBrowser.includes('buildCommitFileTree'), true)
-  assert.equal(diffBrowser.includes('devbench-commit-browser'), true)
-  assert.equal(diffBrowser.includes('devbench-commit-diff'), true)
-  assert.equal(commitsView.includes('tabs.commits.openSession'), true)
-  assert.equal(commitsView.includes('linkRequirementCommit'), true)
-  assert.equal(tasks.includes('devbench-detail-actions'), true)
-  assert.equal(page.includes('getProjectOpenTargets'), true)
-  assert.equal(page.includes('startUncommittedReview'), true)
-  assert.equal(page.includes('findActiveUncommittedReviewTask'), true)
-  assert.equal(page.includes("t('project.review.uncommittedStarted')"), true)
-  assert.equal(reviews.includes('project.review.uncommittedTarget'), true)
-  assert.equal(tasks.includes('tabs.tasks.field.target'), true)
-  assert.equal(home.includes('project.review.uncommittedTarget'), true)
-  assert.equal(page.includes('project.open.'), true)
-  assert.equal(detail.includes('submitCommit'), false)
-  assert.equal(detail.includes('gitCommit'), false)
-  assert.equal(detail.includes('gitBusy'), false)
-  assert.equal(detail.includes('commitModal'), false)
-  assert.equal(detail.includes('detail.git.commit'), false)
-  assert.equal(worktrees.includes('getProjectWorktrees'), true)
-  assert.equal(worktrees.includes('getProjectWorktreeChanges'), true)
-  assert.equal(worktrees.includes('previewWorktreeCommit'), true)
-  assert.equal(worktrees.includes('pushWorktree'), true)
-  assert.equal(worktrees.includes('revealProjectWorktree'), true)
-  assert.equal(worktrees.includes('createProjectWorktree'), true)
-  assert.equal(worktrees.includes('pruneProjectWorktree'), true)
-  assert.equal(worktrees.includes('devbench-worktree-diff'), true)
-  assert.equal(worktrees.includes('project.worktrees.pushNoRemote'), true)
-  assert.equal(worktrees.includes('project.worktrees.notCreated'), true)
-  assert.equal(worktrees.includes('project.worktrees.pruneAll'), true)
-  assert.equal(worktrees.includes('project.worktrees.repreview'), true)
-  assert.equal(page.includes('onGoRequirements'), true)
-  assert.equal(page.includes('onOpenCommitPreview: openCommitPreview'), true)
-  assert.equal(page.includes('repreviewWorktreeTask'), true)
-  assert.equal(worktrees.includes('beginRowAction'), true)
-  assert.equal(worktrees.includes('commitTaskFor'), true)
-  assert.equal(worktrees.includes('closeChanges'), true)
-  assert.equal(confirmModal.includes('project.commit.confirm.worktreeHint'), true)
-  assert.equal(confirmModal.includes('isWorktree && worktreeBranch !=='), true)
-  assert.equal(tree.includes('fileSeq.current !== token'), true)
-  assert.equal(tree.includes('props.revision'), true)
-  assert.equal(action.includes("activeTab: 'requirements'"), true)
-  assert.equal(action.includes('selectedProjectId'), true)
-  assert.equal(listPage.includes('LIST_PAGE_SIZE = 10'), true)
-  assert.equal(listPage.includes('page.total <= page.size'), true)
-  assert.equal(home.includes('useListPage(recentTasks)'), true)
-  assert.equal(home.includes('useListPage(activeEntries)'), true)
-  assert.equal(tasks.includes('useListPage(filtered)'), true)
-  assert.equal(reviews.includes('useListPage(filtered)'), true)
+test('UI races preserve the latest view and serialize requirement execution', async function () {
+  const originalFetch = globalThis.fetch
+  const { render, nodes, cleanup, mockApi, findButton, textOf, flushAsyncWork, waitFor } = await import('./helpers.js')
+  const { act } = await import('react')
+  const { FileTree } = await import('../../src/client/ui/file-tree.js')
+  const { WorkspaceChangesPanel } = await import('../../src/client/views/project/workspace-changes.js')
+  const { ProjectRequirements } = await import('../../src/client/views/project/requirements.js')
+  const t = (key: string): string => key
+  function deferred<T>() {
+    let resolve: (value: T) => void
+    const promise = new Promise<T>(done => { resolve = done })
+    return { promise, resolve: (value: T) => resolve(value) }
+  }
+  try {
+    // A slower file response must not replace the newly selected file or its draft.
+    const oldFile = deferred<FileResult>()
+    const fileSave = deferred<{ saved: boolean }>()
+    const writes: unknown[] = []
+    let fileReads = 0
+    mockApi((url, init) => {
+      if (url.pathname.endsWith('/files/write')) {
+        writes.push(JSON.parse(String(init.body)))
+        return fileSave.promise
+      }
+      assert.ok(url.pathname.endsWith('/files'))
+      fileReads += 1
+      return url.searchParams.get('path') === 'a.txt'
+        ? oldFile.promise
+        : { kind: 'file', path: 'b.txt', size: 5, editable: true, binary: false, content: 'new B' }
+    })
+    const treeProps = {
+      t, workspaceId: 'w1', requirementId: 'REQ-1', revision: 0,
+      rootEntries: [
+        { name: 'a.txt', path: 'a.txt', type: 'file' },
+        { name: 'b.txt', path: 'b.txt', type: 'file' },
+      ],
+      showToast() {}, onDelete() {},
+    }
+    await render({ type: FileTree, props: treeProps })
+    const fileRow = (name: string) => nodes().find(node =>
+      node.props.className?.startsWith('devbench-file-row') && textOf(node).includes(name))
+    await fileRow('a.txt').props.onClick()
+    await fileRow('b.txt').props.onClick()
+    assert.equal(nodes().find(node => node.type === 'textarea').props.value, 'new B')
+    await act(async () => {
+      oldFile.resolve({ kind: 'file', path: 'a.txt', size: 5, editable: true, binary: false, content: 'old A' })
+    })
+    assert.equal(nodes().find(node => node.type === 'textarea').props.value, 'new B')
+    await nodes().find(node => node.type === 'textarea').props.onChange({ target: { value: 'edited B' } })
+    const save = findButton(nodes(), 'detail.files.save')
+    save.props.onClick()
+    await save.props.onClick()
+    await fileRow('a.txt').props.onClick()
+    assert.deepEqual(writes, [{ workspaceId: 'w1', id: 'REQ-1', path: 'b.txt', content: 'edited B' }])
+    assert.equal(fileReads, 2, 'saving blocks switching files')
+    assert.equal(nodes().find(node => node.type === 'textarea').props.disabled, true)
+    await act(async () => { fileSave.resolve({ saved: true }) })
+    await waitFor(() => Boolean(findButton(nodes(), 'detail.files.save')), 'file save settles')
+    assert.equal(findButton(nodes(), 'detail.files.save').props.disabled, true, 'saved draft is clean')
+    await render({ type: FileTree, props: { ...treeProps, revision: 1 } })
+    assert.equal(nodes().some(node => node.type === 'textarea'), false, 'revision clears file selection')
+    cleanup()
+
+    const oldWorkspace = deferred<unknown>()
+    const changes = (branch: string) => ({ initialized: true, branch, head: 'abc', files: [], remotes: [] })
+    mockApi(url => {
+      assert.ok(url.pathname.endsWith('/project/changes'))
+      return url.searchParams.get('workspaceId') === 'w1' ? oldWorkspace.promise : changes('new-branch')
+    })
+    await render({ type: WorkspaceChangesPanel, props: { t, workspaceId: 'w1' } })
+    await render({ type: WorkspaceChangesPanel, props: { t, workspaceId: 'w2' } })
+    assert.ok(textOf(nodes()).includes('new-branch'))
+    await act(async () => { oldWorkspace.resolve(changes('old-branch')) })
+    assert.ok(textOf(nodes()).includes('new-branch'))
+    assert.equal(textOf(nodes()).includes('old-branch'), false)
+    cleanup()
+
+    const first: RequirementSummary = {
+      workspaceId: 'w1', id: 'REQ-1', title: 'First', status: 'new', folder: 'REQ-1',
+      path: '/tmp/REQ-1/requirement.md', createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z', sessions: [], commits: [], worktree: false, favorite: false,
+    }
+    const second = { ...first, id: 'REQ-2', title: 'Second' }
+    const worktree = { enabled: false, exists: false, path: '', branch: '', base: '' }
+    // Exercise both session locations and the host's explicit failure envelope.
+    for (const mode of ['workspace', 'worktree', 'failed'] as const) {
+      const events: string[] = []
+      const posts: Array<{ path: string; body: Record<string, unknown> }> = []
+      const locations: Array<{ workspaceId: string } | { cwd: string }> = []
+      const opened: string[] = []
+      const oldDetail = deferred<RequirementDetail>()
+      const draftSave = deferred<void>()
+      const session = deferred<Awaited<ReturnType<ClientContext['sessions']['create']>>>()
+      const reload = deferred<void>()
+      let detail: RequirementDetail = { requirement: { ...second }, body: 'Second body', files: [], worktree }
+      const ctx: ClientContext = {
+        effect(callback) { callback() },
+        locale: { bind: () => t, register: () => () => {} },
+        slots: { inject(callbackName, callback) { callback() }, register: () => () => {} },
+        layout: { selectPanel() {} },
+        uiWorkspace: { async pickDirectory() { return null }, openSession(id) { opened.push(id) } },
+        sessions: { create(options) { locations.push(options); events.push('create-session'); return session.promise } },
+        remote: { session: {
+          async prompt(options) {
+            events.push('prompt')
+            assert.equal(options.sessionId, 'session-2')
+            assert.deepEqual(options.content, [{ type: 'text', text: 'Execute second' }])
+            return { ok: true, value: undefined }
+          },
+          async rename(options) { assert.equal(options.sessionId, 'session-2'); return { ok: true, value: undefined } },
+        } },
+      }
+      setRuntimeContext(ctx)
+      mockApi(async (url, init) => {
+        const body = JSON.parse(String(init.body))
+        const path = url.pathname.replace('/dsh-devbench/api', '')
+        if (path === '/requirement/get') return body.id === 'REQ-1' ? oldDetail.promise : detail
+        posts.push({ path, body })
+        if (path === '/requirement/save') {
+          if (body.title) {
+            events.push('save-draft')
+            await draftSave.promise
+            detail = { ...detail, body: body.body, requirement: { ...detail.requirement, title: body.title } }
+            events.push('saved-draft')
+          } else {
+            events.push('status:' + body.status)
+            detail = { ...detail, requirement: { ...detail.requirement, status: body.status } }
+          }
+          return { requirement: detail.requirement }
+        }
+        if (path === '/requirement/execute') {
+          events.push('execute')
+          return { prompt: 'Execute second', worktree: { ...worktree, enabled: mode === 'worktree' }, cwd: '/tmp/worktree' }
+        }
+        if (path === '/requirement/link-session') {
+          events.push('link')
+          assert.equal(body.sessionId, 'session-2')
+          detail = { ...detail, requirement: { ...detail.requirement, sessions: ['session-2'] } }
+          return { requirement: detail.requirement }
+        }
+        assert.equal(path, '/requirement/execute/task')
+        events.push('record-task')
+        assert.equal(body.sessionId, 'session-2')
+        return { task: { id: 'task-2' } }
+      })
+      resetUiStore()
+      uiStore.set({ view: 'project', selectedProjectId: 'w1', activeTab: 'requirements',
+        selectedRequirement: { workspaceId: 'w1', id: mode === 'workspace' ? 'REQ-1' : 'REQ-2' } })
+      await render({ type: ProjectRequirements, props: {
+        t, workspace: { workspaceId: 'w1', requirements: [first, second] }, configured: true,
+        tasks: [], showToast() {},
+        onReloadState() { events.push('reload-state'); return reload.promise },
+        async onReloadTasks() { events.push('reload-tasks'); throw new Error('refresh failed') },
+      } })
+      if (mode === 'workspace') {
+        await act(async () => {
+          await nodes().find(node => node.props.className?.startsWith('devbench-master-row') &&
+            node.props.role === 'button' && textOf(node).includes('Second')).props.onClick()
+        })
+        assert.ok(textOf(nodes()).includes('Second body'))
+        await act(async () => { oldDetail.resolve({ requirement: first, body: 'Old first body', files: [], worktree }) })
+        assert.equal(textOf(nodes()).includes('Old first body'), false)
+        assert.ok(textOf(nodes()).includes('Second body'))
+      }
+      await findButton(nodes(), 'detail.edit').props.onClick()
+      await nodes().find(node => node.type === 'textarea').props.onChange({ target: { value: 'Edited second body' } })
+      const execute = findButton(nodes(), 'detail.execute')
+      execute.props.onClick()
+      await execute.props.onClick()
+      assert.deepEqual(events, ['save-draft'], 'execution waits for the draft save')
+      assert.equal(locations.length, 0)
+      assert.equal(posts[0].body.body, 'Edited second body')
+      await act(async () => { draftSave.resolve() })
+      await waitFor(() => locations.length === 1, 'session creation follows the draft save')
+      assert.deepEqual(locations, [mode === 'worktree' ? { cwd: '/tmp/worktree' } : { workspaceId: 'w1' }])
+      assert.deepEqual(events, ['save-draft', 'saved-draft', 'execute', 'create-session'])
+      await act(async () => {
+        session.resolve(mode === 'failed'
+          ? { ok: false, error: { code: 'create-failed', message: 'Session creation failed' } }
+          : { ok: true, value: { sessionId: 'session-2' } })
+      })
+      await waitFor(() => events.includes('reload-state'), 'execution refreshes the state after settling')
+      assert.deepEqual(opened, [], 'session opens only after refreshes settle')
+      await act(async () => { reload.resolve() })
+      await flushAsyncWork()
+      if (mode === 'failed') {
+        assert.equal(events.includes('link') || events.includes('prompt') || events.includes('record-task'), false)
+        assert.ok(events.includes('status:new'), 'failed execution restores the previous status')
+        assert.ok(textOf(nodes()).includes('Session creation failed'))
+        assert.deepEqual(opened, [])
+      } else {
+        assert.deepEqual(events.slice(0, 8), [
+          'save-draft', 'saved-draft', 'execute', 'create-session', 'link', 'prompt', 'record-task', 'status:running',
+        ])
+        assert.equal(posts.filter(post => post.path === '/requirement/execute').length, 1)
+        assert.equal(posts.filter(post => post.path === '/requirement/execute/task').length, 1)
+        assert.deepEqual(opened, ['session-2'], 'a failed task refresh does not block opening the created session')
+      }
+      cleanup()
+      clearLeaveGuard()
+    }
+  } finally {
+    cleanup()
+    clearLeaveGuard()
+    resetUiStore()
+    setRuntimeContext(null)
+    globalThis.fetch = originalFetch
+    initRuntime(() => fakeReact)
+  }
 })
 
 test('formatShortTime keeps dense list timestamps short', function () {
@@ -440,15 +497,12 @@ test('formatShortTime keeps dense list timestamps short', function () {
   assert.equal(formatShortTime(new Date(2025, 11, 31, 8, 0, 0).toISOString(), now), '2025-12-31')
 })
 
-test('sidebar workbench icon matches the package icon asset', function () {
+test('package icon asset uses the workbench panel layout', function () {
   const source = fs.readFileSync('icon.svg', 'utf8')
   assert.equal(source.includes('<svg'), true)
   assert.equal(source.includes('M9.6 4.2v15.6'), true)
   assert.equal(source.includes('width="17.2"'), true)
   assert.equal(source.includes('M8.8 11.6'), false)
-  const plugin = fs.readFileSync('src/client/plugin.ts', 'utf8')
-  assert.equal(plugin.includes('DevbenchIcon'), true)
-  assert.equal(plugin.includes('RequirementsIcon'), false)
 })
 
 

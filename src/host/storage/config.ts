@@ -1,3 +1,4 @@
+import type { ConfigDto } from '../../shared/api-types.js'
 /** Config persistence with atomic writes and default-template sentinel handling. */
 import fs, { promises as fsp } from 'node:fs'
 import os from 'node:os'
@@ -53,28 +54,28 @@ function migrateLegacyConfigDirectorySync(target) {
   return target
 }
 
-export function configDirectory() {
+export function configDirectory(): string {
   const override = process.env[CONFIG_DIR_ENV] || process.env[LEGACY_CONFIG_DIR_ENV]
   if (typeof override === 'string' && override.length > 0) return override
   return migrateLegacyConfigDirectorySync(path.join(os.homedir(), CONFIG_DIR_NAME))
 }
 
-export function configFilePath() {
+export function configFilePath(): string {
   return path.join(configDirectory(), 'config.json')
 }
 
 /** Default root for per-requirement git worktrees, under the plugin config directory. */
-export function defaultWorktreeRoot() {
+export function defaultWorktreeRoot(): string {
   return path.join(configDirectory(), 'worktrees')
 }
 
 /** Resolve the configured worktree root, falling back to the default location. */
-export function resolveWorktreeRoot(config) {
+export function resolveWorktreeRoot(config: Pick<ConfigDto, 'worktreeRoot'>): string {
   const value = config && typeof config.worktreeRoot === 'string' ? config.worktreeRoot : ''
   return value.length > 0 ? value : defaultWorktreeRoot()
 }
 
-export function defaultConfig() {
+export function defaultConfig(): ConfigDto {
   return {
     rootDir: '',
     promptTemplate: DEFAULT_PROMPT_TEMPLATE,
@@ -84,7 +85,7 @@ export function defaultConfig() {
   }
 }
 
-export async function readConfig() {
+export async function readConfig(): Promise<ConfigDto> {
   const file = configFilePath()
   const stat = await lstatMaybe(file)
   if (stat === null) return defaultConfig()
@@ -129,7 +130,7 @@ export async function readConfig() {
   }
 }
 
-async function persistConfig(next) {
+async function persistConfig(next: Partial<ConfigDto>): Promise<ConfigDto> {
   const rootDir = typeof next.rootDir === 'string' ? next.rootDir : ''
   if (rootDir.length > 0 && path.isAbsolute(rootDir) === false) {
     throw apiError(400, 'bad-root', messages.badRoot)
@@ -170,11 +171,11 @@ async function persistConfig(next) {
   }
 }
 
-export function writeConfig(next) {
+export function writeConfig(next: Partial<ConfigDto>): Promise<ConfigDto> {
   return withFileLock(configFilePath(), function () { return persistConfig(next) })
 }
 
-export function updateConfig(updater) {
+export function updateConfig(updater: (current: ConfigDto) => Partial<ConfigDto> | Promise<Partial<ConfigDto>>): Promise<ConfigDto> {
   return withFileLock(configFilePath(), async function () {
     const current = await readConfig()
     const next = await updater(current)
@@ -182,7 +183,7 @@ export function updateConfig(updater) {
   })
 }
 
-export function requireRoot(config) {
+export function requireRoot(config: Pick<ConfigDto, 'rootDir'>): string {
   if (typeof config.rootDir !== 'string' || config.rootDir.length === 0) {
     throw apiError(400, 'unconfigured', messages.unconfigured)
   }

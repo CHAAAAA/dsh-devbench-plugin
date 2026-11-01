@@ -1,19 +1,21 @@
 /** Shared UI primitives: styles, banner, badge, breadcrumb and focus-trapped modal. */
 import { h, useEffect, useRef } from '../runtime.js'
+import type { ReactElement, ReactNode } from 'react'
+import type { Translate } from '../runtime.js'
 import { CSS } from './styles.js'
 
 const MODAL_STACK = []
 let modalSequence = 0
 
-export function Styles() {
+export function Styles(): ReactElement {
   return h('style', { dangerouslySetInnerHTML: { __html: CSS } })
 }
 
-export function StatusBadge(props) {
+export function StatusBadge(props: { status: string; t: Translate }): ReactElement {
   return h('span', { className: 'devbench-badge ' + props.status }, props.t('status.' + props.status))
 }
 
-export function Banner(props) {
+export function Banner(props: { kind?: string; children?: ReactNode }): ReactElement {
   return h('div', {
     className: 'devbench-banner ' + (props.kind || 'info'),
     role: props.kind === 'error' ? 'alert' : undefined,
@@ -21,7 +23,10 @@ export function Banner(props) {
 }
 
 /** Breadcrumb: items = [{ label, onClick?, current? }]. */
-export function Breadcrumb(props) {
+export function Breadcrumb(props: {
+  items: { label: string; onClick?: () => void; current?: boolean }[]
+  label?: string
+}): ReactElement {
   const items = Array.isArray(props.items) ? props.items : []
   return h('nav', { className: 'devbench-breadcrumb', 'aria-label': props.label || 'breadcrumb' },
     items.map(function (item, index) {
@@ -62,7 +67,25 @@ export function formatShortTime(value, now?) {
   return String(date.getFullYear()) + '-' + monthDay
 }
 
-export function Modal(props) {
+export interface ModalProps {
+  t: Translate
+  title: string
+  children?: ReactNode
+  headerActions?: ReactNode
+  onClose?: () => void
+  onCancel?: () => void
+  onConfirm?: () => void
+  showClose?: boolean
+  closeOnOverlay?: boolean
+  autoFocus?: boolean
+  size?: string
+  actions?: boolean
+  cancelText?: string
+  confirmText?: string
+  danger?: boolean
+  confirmDisabled?: boolean
+}
+export function Modal(props: ModalProps): ReactElement {
   const t = props.t
   const idRef = useRef(0)
   if (idRef.current === 0) idRef.current = ++modalSequence
@@ -70,19 +93,19 @@ export function Modal(props) {
   closeRef.current = props.onClose || props.onCancel || function () {}
   const cancelRef = useRef(props.onCancel || props.onClose)
   cancelRef.current = props.onCancel || props.onClose || function () {}
-  const dialogRef = useRef(null)
+  const dialogRef = useRef<HTMLDivElement | null>(null)
   useEffect(function () {
     const modalId = idRef.current
     MODAL_STACK.push(modalId)
-    const previous: any = typeof document === 'undefined' ? null : document.activeElement
+    const previous = typeof document === 'undefined' ? null : document.activeElement
     const node = dialogRef.current
     if (node) {
       const root = node.querySelector('.devbench-modal-body') || node
-      const first = root.querySelector('input,textarea,select,button')
+      const first = root.querySelector<HTMLElement>('input,textarea,select,button')
       if (first && props.autoFocus !== false) first.focus()
       else node.focus()
     }
-    function onKey(event) {
+    function onKey(event: KeyboardEvent): void {
       // Only the top-most dialog reacts to Escape / Tab (prevents closing the
       // dialog underneath when a confirmation is stacked on top of it).
       if (MODAL_STACK[MODAL_STACK.length - 1] !== modalId) return
@@ -91,7 +114,7 @@ export function Modal(props) {
         return
       }
       if (event.key !== 'Tab' || !node) return
-      const items = node.querySelectorAll('button,input,textarea,select,a[href]')
+      const items = node.querySelectorAll<HTMLElement>('button,input,textarea,select,a[href]')
       if (items.length === 0) return
       const first = items[0]
       const last = items[items.length - 1]
@@ -106,7 +129,7 @@ export function Modal(props) {
       window.removeEventListener('keydown', onKey)
       const index = MODAL_STACK.indexOf(modalId)
       if (index >= 0) MODAL_STACK.splice(index, 1)
-      if (previous && previous.focus) previous.focus()
+      if (previous instanceof HTMLElement) previous.focus()
     }
   }, [])
   const showClose = props.showClose === undefined

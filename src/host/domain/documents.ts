@@ -1,3 +1,4 @@
+import type { DocumentSummary, DocumentDetail } from '../../shared/api-types.js'
 /**
  * Project document store.
  *
@@ -82,7 +83,7 @@ function localDatePart(date) {
     String(date.getDate()).padStart(2, '0')
 }
 
-export function toDocumentSummary(meta) {
+export function toDocumentSummary(meta: ReturnType<typeof parseRequirementText>['meta']): DocumentSummary {
   return {
     id: meta.id,
     title: meta.title,
@@ -179,7 +180,7 @@ async function readDocumentAt(resolved, id) {
 }
 
 /** All readable documents with bodies, sorted by updatedAt descending. */
-export async function scanDocumentRecords(workspaceFolder) {
+export async function scanDocumentRecords(workspaceFolder: string): Promise<{ summary: DocumentSummary; body: string }[]> {
   const resolved = await resolveDocumentsDirectory(workspaceFolder, false)
   if (resolved.directory === null) return []
   let entries
@@ -209,12 +210,12 @@ export async function scanDocumentRecords(workspaceFolder) {
 }
 
 /** All document summaries in one workspace, sorted by updatedAt descending. */
-export async function scanDocumentSummaries(workspaceFolder) {
+export async function scanDocumentSummaries(workspaceFolder: string): Promise<DocumentSummary[]> {
   const records = await scanDocumentRecords(workspaceFolder)
   return records.map(function (record) { return record.summary })
 }
 
-export async function readDocument(workspaceFolder, id) {
+export async function readDocument(workspaceFolder: string, id: string): Promise<DocumentDetail> {
   assertDocumentId(id)
   const resolved = await resolveDocumentsDirectory(workspaceFolder, false)
   const document = await readDocumentAt(resolved, id)

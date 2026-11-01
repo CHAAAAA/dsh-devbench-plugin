@@ -1,15 +1,18 @@
 /** Conversation header action. Resolves session to requirement and opens the panel. */
 import { h, getFragment, useState, useEffect, isAbortError, t as translate } from '../../runtime.js'
+import type { ReactElement } from 'react'
+import type { Translate } from '../../runtime.js'
+import type { RequirementLink } from '../../../shared/api-types.js'
 import { getSessionLink } from '../../core/api.js'
 import { uiStore } from '../../core/ui-store.js'
 import { getRuntimeContext } from '../../runtime.js'
 import { PANEL_ID } from '../../runtime.js'
 import { Styles } from '../../ui/common.js'
 import { IconLink, IconReq } from '../../ui/icons.js'
-export function SessionRequirementAction(props) {
+export function SessionRequirementAction(props: { t?: Translate; linkedSessionId?: string; sessionId?: string }): ReactElement {
   const t = props.t || translate
   const sessionId = props.linkedSessionId || props.sessionId
-  const [state, setState] = useState({ status: 'loading', link: null, error: '' })
+  const [state, setState] = useState<{ status: string; link: RequirementLink | null; error: string }>({ status: 'loading', link: null, error: '' })
   const [reloadKey, setReloadKey] = useState(0)
   useEffect(function () {
     if (!sessionId) return
@@ -35,7 +38,7 @@ export function SessionRequirementAction(props) {
       return
     }
     if (state.link) {
-      const storeState: Record<string, any> = uiStore.state
+      const storeState: { view: string; collapsedGroups?: Record<string, boolean>; expandedGroups?: Record<string, boolean> } = uiStore.state
       const nextCollapsed = Object.assign({}, storeState.collapsedGroups || {})
       delete nextCollapsed[state.link.workspaceId]
       const nextExpanded = Object.assign({}, storeState.expandedGroups || {})

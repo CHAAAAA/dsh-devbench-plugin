@@ -1,5 +1,8 @@
 /** Root/template/Git settings: dirty tracking, leave guard and dangerous-change confirmation. */
 import { h, useState, useEffect, useRef, errorText, isAbortError } from '../runtime.js'
+import type { ReactElement, ReactNode } from 'react'
+import type { ClientContext, Translate } from '../runtime.js'
+import type { StateDto, StateConfig, GitInfo, GitStatus } from '../../shared/api-types.js'
 import { gitStatus, gitInit, gitCommit, saveConfig } from '../core/api.js'
 import { Banner } from '../ui/common.js'
 import { confirmDialog, choiceDialog } from '../ui/dialogs.js'
@@ -7,10 +10,14 @@ import { setLeaveGuard, clearLeaveGuard } from '../core/navigation.js'
 
 const GIT_FILE_LIMIT = 40
 
-export function SettingsView(props) {
+export function SettingsView(props: {
+  t: Translate; data: StateDto | null; runtimeCtx?: ClientContext | null
+  showToast?: (kind: string, text: string) => void
+  reload?: () => Promise<unknown>; onBack?: () => void
+}): ReactElement {
   const t = props.t
   const data = props.data
-  const config = data && data.config ? data.config : {}
+  const config: Partial<StateConfig> = data && data.config ? data.config : {}
   const serverRoot = data && data.rootDir ? String(data.rootDir) : ''
   const serverTemplate = typeof config.promptTemplate === 'string' ? config.promptTemplate : ''
   const serverReview = typeof config.reviewPromptTemplate === 'string' ? config.reviewPromptTemplate : ''
@@ -21,15 +28,15 @@ export function SettingsView(props) {
   const [reviewTemplate, setReviewTemplate] = useState(serverReview)
   const [commitTemplate, setCommitTemplate] = useState(serverCommit)
   const [worktreeRoot, setWorktreeRoot] = useState(serverWorktree)
-  const [gitState, setGitState] = useState({ loading: false, error: '', data: null })
+  const [gitState, setGitState] = useState<{ loading: boolean; error: string; data: GitStatus | null }>({ loading: false, error: '', data: null })
   const [commitMessage, setCommitMessage] = useState(t('detail.git.defaultMessage'))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [commitBusy, setCommitBusy] = useState(false)
   const busyRef = useRef(false)
-  const gitSeqRef = useRef(null)
+  const gitSeqRef = useRef<{ seq: number } | null>(null)
   if (!gitSeqRef.current) gitSeqRef.current = { seq: 0 }
-  const baselineRef = useRef(null)
+  const baselineRef = useRef<{ root: string; template: string; review: string; commit: string; worktree: string } | null>(null)
   const leaveRef = useRef(null)
 
   const baseline = baselineRef.current || {
@@ -327,8 +334,8 @@ export function SettingsView(props) {
         h('div', { className: 'devbench-section-title' }, t('settings.git')),
         h('div', { className: 'devbench-hint' }, t('settings.root.hint')))
     }
-    const git = data.git || {}
-    const children = [
+    const git: Partial<GitInfo> = data.git || {}
+    const children: ReactNode[] = [
       h('div', { className: 'devbench-section-title', key: 'title' }, t('settings.git')),
       h('div', { className: 'devbench-hint', key: 'hint' },
         git.initialized ? t('settings.git.initialized') : t('settings.git.notInitialized')),

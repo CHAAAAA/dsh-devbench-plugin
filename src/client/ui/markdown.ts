@@ -1,5 +1,6 @@
 /** Safe mini Markdown renderer. Never inject HTML; hrefs are allow-listed. */
 import { h } from '../runtime.js'
+import type { AnchorHTMLAttributes, Attributes } from 'react'
 function badChars(text) {
   return /[\u0000-\u001f\u007f]/.test(text)
 }
@@ -43,7 +44,7 @@ export function inlineMarkdown(text, keyPrefix) {
       const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token)
       const safe = linkMatch ? sanitizeHref(linkMatch[2]) : null
       if (linkMatch && safe) {
-        const props: Record<string, any> = { key: key, href: safe.href }
+        const props: AnchorHTMLAttributes<HTMLAnchorElement> & Attributes = { key: key, href: safe.href }
         if (safe.external) {
           props.target = '_blank'
           props.rel = 'noreferrer noopener'

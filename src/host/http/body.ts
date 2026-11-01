@@ -3,10 +3,11 @@ import { MAX_BODY_BYTES } from '../constants.js'
 import { apiError } from '../errors.js'
 import { messages } from '../messages/index.js'
 import { isPlainObject } from '../shared/path-safety.js'
+import type { ApiError } from '../errors.js'
 
-export async function readJsonBody(req, maxBytes: any = undefined) {
+export async function readJsonBody(req: AsyncIterable<unknown>, maxBytes?: number): Promise<Record<string, unknown>> {
   const limit = typeof maxBytes === 'number' ? maxBytes : MAX_BODY_BYTES
-  const chunks = []
+  const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of req) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
@@ -17,7 +18,7 @@ export async function readJsonBody(req, maxBytes: any = undefined) {
   if (chunks.length === 0) return {}
   const text = Buffer.concat(chunks).toString('utf8')
   if (text.trim() === '') return {}
-  let value
+  let value: unknown
   try {
     value = JSON.parse(text)
   } catch {
@@ -26,15 +27,25 @@ export async function readJsonBody(req, maxBytes: any = undefined) {
   if (isPlainObject(value) === false) {
     throw apiError(400, 'bad-body', messages.badBody)
   }
-  return value
+  return value as Record<string, unknown>
 }
 
-function invalidField(field) {
+function invalidField(field: string): ApiError {
   const prefix = messages.invalidField || 'invalid field'
   return apiError(400, 'bad-field', prefix + ': ' + field)
 }
 
-export function readStringField(body, key, options: any = {}) {
+interface StringFieldOptions {
+  required?: boolean
+  defaultValue?: string
+  allowEmpty?: boolean
+  trim?: boolean
+  maxLength?: number
+  missingCode?: string
+  missingMessage?: string
+}
+
+export function readStringField(body: Record<string, unknown>, key: string, options: StringFieldOptions = {}): string {
   const value = body[key]
   function missing() {
     if (typeof options.missingCode === 'string') {

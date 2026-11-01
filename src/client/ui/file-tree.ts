@@ -2,30 +2,39 @@
  *  The editor tracks an unsaved draft and asks before switching files. */
 import { h, getFragment, useState, useEffect, useRef, errorText, isAbortError } from '../runtime.js'
 import { listFiles, writeFile, openFile } from '../core/api.js'
+import type { ReactElement } from 'react'
+import type { Translate } from '../runtime.js'
+import type { FileEntry, FileResult } from '../../shared/api-types.js'
 import { confirmDialog } from './dialogs.js'
 import { Banner } from './common.js'
 import { IconArrow, IconFolder, IconFile, IconExternal, IconTrash } from './icons.js'
 const EMPTY_FILE = { status: 'idle', data: null, error: '' }
 function noop() {}
-export function FileTree(props) {
+export function FileTree(props: {
+  t: Translate; workspaceId: string; requirementId: string; revision?: number
+  rootEntries: FileEntry[]; disabled?: boolean; loading?: boolean; error?: string
+  showToast(kind: string, message: string): void
+  onBusyChange?: (busy: boolean) => void; onDirtyChange?: (dirty: boolean) => void
+  onDelete(path: string): void; onReloadRoot?: () => void
+}): ReactElement {
   const t = props.t
-  const [children, setChildren] = useState({})
-  const [expanded, setExpanded] = useState({})
-  const [selected, setSelected] = useState(null)
-  const [selectedEntry, setSelectedEntry] = useState(null)
-  const [fileState, setFileState] = useState(EMPTY_FILE)
+  const [children, setChildren] = useState<Record<string, FileEntry[]>>({})
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [selected, setSelected] = useState<string | null>(null)
+  const [selectedEntry, setSelectedEntry] = useState<FileEntry | null>(null)
+  const [fileState, setFileState] = useState<{ status: string; data: FileResult | null; error: string }>(EMPTY_FILE)
   const [fileDraft, setFileDraft] = useState('')
   const [saveBusy, setSaveBusy] = useState(false)
-  const dirSeq = useRef({})
+  const dirSeq = useRef<Record<string, number>>({})
   const fileSeq = useRef(0)
   const saveSeq = useRef(0)
   const saveBusyRef = useRef(false)
-  const selectedRef = useRef(null)
+  const selectedRef = useRef<string | null>(null)
   const dirtyRef = useRef(false)
   const fileData = fileState.data
-  const savedContent = fileData && typeof fileData.content === 'string' ? fileData.content : ''
-  const fileDirty = fileState.status === 'ready' && fileData && fileData.editable === true &&
-    fileDraft !== savedContent
+  const savedContent = fileData?.kind === 'file' && typeof fileData.content === 'string' ? fileData.content : ''
+  const fileDirty = Boolean(fileState.status === 'ready' && fileData?.kind === 'file' && fileData.editable === true &&
+    fileDraft !== savedContent)
   dirtyRef.current = fileDirty
   useEffect(function () {
     dirSeq.current = {}
@@ -53,7 +62,7 @@ export function FileTree(props) {
       if (dirSeq.current[path] !== token) return
       setChildren(function (prev) {
         const next = Object.assign({}, prev)
-        next[path] = value.entries || []
+        next[path] = value.kind === 'dir' ? value.entries : []
         return next
       })
     }, function (err) {
@@ -116,7 +125,7 @@ export function FileTree(props) {
   function saveFile() {
     const current = fileState.data
     if (saveBusyRef.current || props.disabled || fileState.status !== 'ready') return
-    if (!selected || !current || !current.editable) return
+    if (!selected || current?.kind !== 'file' || !current.editable) return
     saveBusyRef.current = true
     setSaveBusy(true)
     if (props.onBusyChange) props.onBusyChange(true)
@@ -208,7 +217,7 @@ export function FileTree(props) {
           t('detail.files.unsaved'))
         : null,
       h('span', { className: 'spacer' }),
-      fileData && fileData.editable ? h('button', {
+      fileData?.kind === 'file' && fileData.editable ? h('button', {
         className: 'devbench-btn primary',
         disabled: saveBusy || props.disabled || fileDirty !== true,
         onClick: saveFile,
@@ -234,7 +243,7 @@ export function FileTree(props) {
             h(entry.type === 'dir' ? IconFolder : IconFile, { size: 14 }),
             h('span', { className: 'devbench-file-name' }, entry.name))
         })))
-    } else if (!fileData || !fileData.editable) {
+    } else if (fileData?.kind !== 'file' || !fileData.editable) {
       editor = h('div', { style: { marginTop: '16px' } }, header,
         h('div', { className: 'devbench-hint' }, t('detail.files.binary')))
     } else {

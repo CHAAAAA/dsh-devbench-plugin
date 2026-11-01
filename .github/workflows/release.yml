@@ -1,6 +1,7 @@
 name: Release
 
-# Push a tag to publish: `git tag -a v1.0.1 -m "release: v1.0.1" && git push origin v1.0.1`
+# Push a v<package.json version> tag to publish through CI.
+# Do not push a release tag after publishing the same version locally.
 # Required repository secret: NPM_TOKEN (an npm automation token with publish rights).
 # Optional environment protection: attach the `npm-publish` environment to this job.
 
@@ -44,25 +45,13 @@ jobs:
       - name: Lint, test, and build
         run: npm run check
 
-      - name: Release preflight (publish mode)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm run release:preflight -- --publish --allow-existing-tag
-
       - name: Pack tarball
-        run: npm run release:pack
+        run: npm run release:pack -- --skip-build
 
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          TAG="latest"
-          case "$VERSION" in
-            *-*) TAG="next" ;;
-          esac
-          npm publish dist/release/*.tgz --access public --tag "$TAG" --ignore-scripts --provenance
-          echo "published dsh-devbench-plugin@${VERSION} with dist-tag ${TAG}"
+        run: npm run release:publish -- --yes --no-tag --allow-existing-tag --provenance
 
       - name: Generate plugin market index
         env:

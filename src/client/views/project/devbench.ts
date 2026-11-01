@@ -2,6 +2,10 @@ import {
   h, getFragment, getRuntimeContext, useState, useEffect, useRef,
   errorText, isAbortError, t as translate,
 } from '../../runtime.js'
+import type { ReactElement } from 'react'
+import type { Translate } from '../../runtime.js'
+import type { StateDto, ProjectOverview as ProjectOverviewDto, ProjectGit, TaskDto, ReviewDto, OpenTarget } from '../../../shared/api-types.js'
+import type { SessionsHook } from '../../ui/session-row.js'
 import { useUiState, uiStore, setSelection } from '../../core/ui-store.js'
 import { hasLeaveGuard, navigateView, navigateBack, runLeaveGuard } from '../../core/navigation.js'
 import { showToast as pushToast } from '../../ui/toast.js'
@@ -42,13 +46,16 @@ const TAB_LABEL_KEYS = {
   reviews: 'project.tab.reviews',
   tasks: 'project.tab.tasks',
 }
-export function ProjectDevbenchPage(props) {
+export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: SessionsHook }): ReactElement {
   const t = props.t || translate
   const ui = useUiState()
-  const [state, setState] = useState({ data: null, loading: true, error: '' })
-  const [overview, setOverview] = useState(EMPTY_OVERVIEW)
-  const [tasksState, setTasksState] = useState(EMPTY_TASKS)
-  const [reviewContent, setReviewContent] = useState(EMPTY_REVIEW)
+  const [state, setState] = useState<{ data: StateDto | null; loading: boolean; error: string }>({ data: null, loading: true, error: '' })
+  const [overview, setOverview] = useState<{ data: ProjectOverviewDto | null; loading: boolean; error: string; key: string }>(EMPTY_OVERVIEW)
+  const [tasksState, setTasksState] = useState<{ data: TaskDto[]; loading: boolean; error: string; key: string }>(EMPTY_TASKS)
+  const [reviewContent, setReviewContent] = useState<{
+    data: (ReviewDto & { content: string }) | null; loading: boolean; error: string
+    name: string; key: string; meta: ReviewDto | null
+  }>(EMPTY_REVIEW)
   const [selectedReviewName, setSelectedReviewName] = useState('')
   const [addBusy, setAddBusy] = useState(false)
   const [addError, setAddError] = useState('')
@@ -57,15 +64,17 @@ export function ProjectDevbenchPage(props) {
   const [taskBusyKey, setTaskBusyKey] = useState('')
   const [gitBusy, setGitBusy] = useState(false)
   const [linkBusy, setLinkBusy] = useState(false)
-  const [commitModal, setCommitModal] = useState(null)
+  const [commitModal, setCommitModal] = useState<{
+    task: TaskDto; message: string; busy: boolean; cancelling: boolean; error: string
+  } | null>(null)
   const [worktreeRevision, setWorktreeRevision] = useState(0)
-  const [openTargets, setOpenTargets] = useState([])
+  const [openTargets, setOpenTargets] = useState<OpenTarget[]>([])
   const [openTargetBusy, setOpenTargetBusy] = useState('')
   const stateSeqRef = useRef(0)
   const overviewSeqRef = useRef(0)
   const tasksSeqRef = useRef(0)
   const reviewSeqRef = useRef(0)
-  const tasksGateRef = useRef(null)
+  const tasksGateRef = useRef<ReturnType<typeof createTaskRequestGate> | null>(null)
   if (tasksGateRef.current === null) tasksGateRef.current = createTaskRequestGate()
   const addBusyRef = useRef(false)
   const previewBusyRef = useRef(false)
@@ -74,13 +83,12 @@ export function ProjectDevbenchPage(props) {
   const confirmBusyRef = useRef(false)
   const cancelBusyRef = useRef(false)
   const openTargetBusyRef = useRef('')
-  const reviewActionRef = useRef(new Set())
-  const taskActionRef = useRef(new Set())
-  const activeTasksRef = useRef([])
+  const reviewActionRef = useRef(new Set<string>())
+  const taskActionRef = useRef(new Set<string>())
+  const activeTasksRef = useRef<TaskDto[]>([])
   const previousActiveRef = useRef({ projectId: null, count: 0 })
   const taskStatusRef = useRef({})
-  // REQ-20261027-003: working-tree review state. Kept after every legacy hook so
-  // the fixed hook indexes seeded by render-smoke tests stay stable.
+  // Working-tree reviews have a separate in-flight action from commit reviews.
   const [reviewingUncommitted, setReviewingUncommitted] = useState('')
   const uncommittedReviewRef = useRef(false)
   const selectedProjectId = ui.selectedProjectId
@@ -820,7 +828,7 @@ export function ProjectDevbenchPage(props) {
     if (first) openReview(first)
   }, [activeTab, currentOverview, selectedReviewName])
   const projects = state.data ? state.data.workspaces : []
-  const overviewGit = currentOverview && currentOverview.git ? currentOverview.git : {}
+  const overviewGit: Partial<ProjectGit> = currentOverview && currentOverview.git ? currentOverview.git : {}
   const gitReady = overviewGit.initialized === true
   const worktreesGitReady = currentOverview !== null && gitReady !== true ? false : null
   const changes = Array.isArray(overviewGit.changes) ? overviewGit.changes : []
@@ -846,7 +854,7 @@ export function ProjectDevbenchPage(props) {
   const projectTitle = currentOverview && currentOverview.project ? currentOverview.project.title : (currentWorkspace ? currentWorkspace.title : '')
   const projectPath = currentOverview && currentOverview.project
     ? currentOverview.project.canonicalPath
-    : (currentWorkspace ? (currentWorkspace.canonicalPath || currentWorkspace.path) : '')
+    : (currentWorkspace ? currentWorkspace.path : '')
   const requirements = currentWorkspace && Array.isArray(currentWorkspace.requirements) ? currentWorkspace.requirements : []
   const reviews = currentOverview && Array.isArray(currentOverview.reviews) ? currentOverview.reviews : []
   const overviewCommits = currentOverview && Array.isArray(currentOverview.commits) ? currentOverview.commits : []
@@ -1052,7 +1060,7 @@ export function ProjectDevbenchPage(props) {
   if (ui.view === 'settings') {
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
-        h(Breadcrumb, { t: t, items: simpleBreadcrumb(t('breadcrumb.settings')) })),
+        h(Breadcrumb, { items: simpleBreadcrumb(t('breadcrumb.settings')) })),
       h('div', { className: 'devbench-tab-body' },
         h(SettingsView, {
           data: state.data, t: t, reload: loadState, showToast: showToast,
@@ -1061,7 +1069,7 @@ export function ProjectDevbenchPage(props) {
   } else if (ui.view === 'link') {
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
-        h(Breadcrumb, { t: t, items: simpleBreadcrumb(t('breadcrumb.link')) })),
+        h(Breadcrumb, { items: simpleBreadcrumb(t('breadcrumb.link')) })),
       h('div', { className: 'devbench-tab-body' },
         h(LinkView, {
           data: state.data, t: t, linking: linkBusy,
@@ -1071,7 +1079,7 @@ export function ProjectDevbenchPage(props) {
   } else if (ui.view === 'home') {
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
-        h(Breadcrumb, { t: t, items: simpleBreadcrumb(t('home.title')) })),
+        h(Breadcrumb, { items: simpleBreadcrumb(t('home.title')) })),
       h('div', { className: 'devbench-tab-body' },
         h(HomeView, {
           t: t, stateData: state.data,
@@ -1085,13 +1093,13 @@ export function ProjectDevbenchPage(props) {
   } else if (ui.view === 'mcp') {
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
-        h(Breadcrumb, { t: t, items: simpleBreadcrumb(t('breadcrumb.mcp')) })),
+        h(Breadcrumb, { items: simpleBreadcrumb(t('breadcrumb.mcp')) })),
       h('div', { className: 'devbench-tab-body' },
         h(McpView, { t: t, showToast: showToast })))
   } else if (currentWorkspace === null) {
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
-        h(Breadcrumb, { t: t, items: simpleBreadcrumb(t('breadcrumb.project')) })),
+        h(Breadcrumb, { items: simpleBreadcrumb(t('breadcrumb.project')) })),
       h('div', { className: 'devbench-tab-body' },
         h('div', { className: 'devbench-empty-panel', style: { marginTop: '40px' } }, t('project.selectHint'))))
   } else {
@@ -1102,7 +1110,7 @@ export function ProjectDevbenchPage(props) {
     ]
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
-        h(Breadcrumb, { t: t, items: projectBreadcrumb }),
+        h(Breadcrumb, { items: projectBreadcrumb }),
         h('div', { className: 'devbench-project-header devbench-page-title-row' },
           h('div', { style: { flex: 1, minWidth: 0 } },
             h('div', { className: 'devbench-page-title', title: projectTitle }, projectTitle),

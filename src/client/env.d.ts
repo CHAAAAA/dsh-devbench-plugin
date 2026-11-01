@@ -8,7 +8,7 @@ interface Window {
   __ModuleLoader__: {
     load(definition: {
       id: string
-      factory(require: (id: string) => any): any
+      factory(require: (id: string) => unknown): unknown
     }): void
   }
 }

@@ -2,6 +2,7 @@
 import { h, useState, useEffect, useRef, errorText } from '../../runtime.js'
 import { useUiState, setSelection } from '../../core/ui-store.js'
 import * as api from '../../core/api.js'
+import type { ProjectCommitDetail } from '../../../shared/api-types.js'
 import { findActiveReviewTask, findReviewForCommit } from '../../core/project-utils.js'
 import { Banner, Modal } from '../../ui/common.js'
 import { ListFooter } from '../../ui/list-page.js'
@@ -56,7 +57,7 @@ export function ProjectCommits(props) {
   })
   const [search, setSearch] = useState('')
   const [reviewFilter, setReviewFilter] = useState('all')
-  const [detailState, setDetailState] = useState({ loading: false, error: '', data: null, hash: '' })
+  const [detailState, setDetailState] = useState<{ loading: boolean; error: string; data: ProjectCommitDetail | null; hash: string }>({ loading: false, error: '', data: null, hash: '' })
   const [requirementPicker, setRequirementPicker] = useState(null)
   const [linkBusy, setLinkBusy] = useState('')
   const loadingRef = useRef(false)

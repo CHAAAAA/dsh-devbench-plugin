@@ -32,10 +32,7 @@ const result = await build({
   logLevel: 'warning',
 })
 
-let code = result.outputFiles[0].text
-// esbuild renames the factory parameter when the entry mentions `require` more
-// than once; the DSH loader calls `factory(require)`, so keep that identifier.
-code = code.split('require2').join('require')
+const code = result.outputFiles[0].text
 
 fs.mkdirSync('dist', { recursive: true })
 fs.writeFileSync(outfile, code)

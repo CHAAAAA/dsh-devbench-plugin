@@ -1,3 +1,4 @@
+import type { Dispose, HostContext, ToolDefinition, ToolResult, ToolExecution } from '../context.js'
 import { promises as fsp } from 'node:fs'
 import { apiError, errorMessage } from '../errors.js'
 import { messages } from '../messages/index.js'
@@ -23,14 +24,14 @@ const TOOL_OUTPUT_SCHEMA = {
   additionalProperties: false,
 }
 
-function renderToolValue(args, value) {
+function renderToolValue(_args: Record<string, unknown>, value: ToolResult): { type: string; text: string }[] {
   const text = value && typeof value.content === 'string' && value.content.length > 0
     ? value.content
     : (value && typeof value.message === 'string' ? value.message : JSON.stringify(value))
   return [{ type: 'text', text }]
 }
 
-function executeTool(ctx, name, task) {
+function executeTool(ctx: HostContext, name: string, task: ToolDefinition['execute']): ToolDefinition['execute'] {
   return async function (args, exec) {
     try {
       return await task(args || {}, exec || {})
@@ -44,7 +45,7 @@ function executeTool(ctx, name, task) {
   }
 }
 
-function taskSession(exec) {
+function taskSession(exec: ToolExecution): string {
   return exec && exec.agent && exec.agent.session ? exec.agent.session.id || '' : ''
 }
 
@@ -76,8 +77,8 @@ async function requireRunningTask(ctx, taskId, kind, exec) {
   return task
 }
 
-export function registerProjectTools(ctx) {
-  const disposers = []
+export function registerProjectTools(ctx: HostContext): Dispose {
+  const disposers: Dispose[] = []
 
   disposers.push(ctx.tools.register({
     name: 'project_commit_propose',

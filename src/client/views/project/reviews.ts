@@ -1,5 +1,8 @@
 /** Project reviews: master-detail list with search + Markdown preview. */
 import { h } from '../../runtime.js'
+import type { ReactElement } from 'react'
+import type { Translate } from '../../runtime.js'
+import type { ReviewDto } from '../../../shared/api-types.js'
 import { useUiState, setListState } from '../../core/ui-store.js'
 import { ListFooter, useListPage } from '../../ui/list-page.js'
 import { Banner } from '../../ui/common.js'
@@ -14,7 +17,11 @@ function activateOnKey(event, handler) {
     handler()
   }
 }
-export function ProjectReviews(props) {
+export function ProjectReviews(props: {
+  t: Translate; reviews: ReviewDto[]; selectedName?: string; selectedReview?: ReviewDto | null
+  content?: { loading: boolean; error: string; data: (ReviewDto & { content: string }) | null }
+  onOpen?: (review: ReviewDto) => void; onRetry?: () => void
+}): ReactElement {
   const t = props.t
   const reviews = Array.isArray(props.reviews) ? props.reviews : []
   const ui = useUiState()
@@ -90,7 +97,7 @@ export function ProjectReviews(props) {
         }, t('panel.retry')))
     } else if (content.data) {
       const data = content.data
-      const fallback = selectedReview || {}
+      const fallback: Partial<ReviewDto> = selectedReview || {}
       const meta = {
         name: data.name || fallback.name || selectedName,
         commit: data.commit || fallback.commit || '',

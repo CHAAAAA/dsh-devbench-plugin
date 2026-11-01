@@ -1,3 +1,4 @@
+import type { Dispose, HostContext, ToolDefinition, ToolResult, ToolExecution } from '../context.js'
 /** Agent tools. Errors become structured {ok:false,message} results. */
 import { AGENT_WRITABLE_STATUS } from '../constants.js'
 import { ApiError, apiError, errorMessage } from '../errors.js'
@@ -21,11 +22,11 @@ const TOOL_OUTPUT_SCHEMA = {
   additionalProperties: false,
 }
 
-function toolResult(value) {
+function toolResult(value: ToolResult): ToolResult {
   return value
 }
 
-function renderToolValue(args, value) {
+function renderToolValue(_args: Record<string, unknown>, value: ToolResult): { type: string; text: string }[] {
   const text = value && typeof value.content === 'string' && value.content.length > 0
     ? value.content
     : (value && typeof value.message === 'string' ? value.message : JSON.stringify(value))
@@ -45,7 +46,7 @@ export function formatRequirement(requirement) {
   ].join('\n')
 }
 
-async function findTarget(config, args, exec) {
+async function findTarget(config, args: Record<string, unknown>, exec: ToolExecution) {
   const root = requireRoot(config)
   if (args.requirement_id !== undefined) {
     if (typeof args.requirement_id !== 'string') {
@@ -61,7 +62,7 @@ async function findTarget(config, args, exec) {
   return findLinkedRequirement(root, sessionId)
 }
 
-function executeTool(ctx, name, task) {
+function executeTool(ctx: HostContext, name: string, task: ToolDefinition['execute']): ToolDefinition['execute'] {
   return async function (args, exec) {
     try {
       return await task(args || {}, exec)
@@ -75,8 +76,8 @@ function executeTool(ctx, name, task) {
   }
 }
 
-export function registerRequirementTools(ctx) {
-  const disposers = []
+export function registerRequirementTools(ctx: HostContext): Dispose {
+  const disposers: Dispose[] = []
 
   disposers.push(ctx.tools.register({
     name: 'requirement_read',
@@ -137,7 +138,7 @@ export function registerRequirementTools(ctx) {
       if (typeof args.content !== 'string') {
         throw apiError(400, 'bad-field', messages.invalidField + ': content')
       }
-      if (args.status !== undefined && AGENT_WRITABLE_STATUS.includes(args.status) === false) {
+      if (args.status !== undefined && (typeof args.status !== 'string' || AGENT_WRITABLE_STATUS.includes(args.status) === false)) {
         return toolResult({
           ok: false,
           message: messages.toolInvalidStatus || 'status must be new or running',
@@ -146,8 +147,8 @@ export function registerRequirementTools(ctx) {
       const found = await findTarget(config, args, exec)
       if (found === null) return toolResult({ ok: false, message: messages.toolNoTarget })
       const mode = args.mode === 'append' ? 'append' : 'replace'
-      const metaPatch: Record<string, any> = {}
-      if (args.status !== undefined) metaPatch.status = args.status
+      const metaPatch: { status?: string } = {}
+      if (typeof args.status === 'string') metaPatch.status = args.status
       const saved = await updateRequirement(found, function (latest) {
         const body = mode === 'append'
           ? latest.body.replace(/\s*$/, '') + '\n\n' + args.content + '\n'

@@ -16,16 +16,23 @@
  *   --registry <url>  publish to a non-default registry
  *   --no-tag          skip creating the local git tag
  *   --registry-check  extra pre-publish collision check
- *   --skip-build      reuse the existing dist/client.js
+ *   --allow-existing-tag  accept the current release tag (CI tag builds)
+ *   --provenance      include npm provenance (CI only)
  */
-import { createRelease } from '../lib/pack.js'
+import type { ReleaseManifest } from '../lib/pack.js'
+import { setTimeout as delay } from 'node:timers/promises'
+import { printPreflight, runPreflight } from '../lib/preflight.js'
 import {
   abs,
   defaultDistTag,
+  git,
   loadPackage,
   parseArgs,
+  readJson,
   run,
+  sha256,
   sha512Base64,
+  tarballName,
 } from '../lib/util.js'
 
 const { flags, values } = parseArgs()
@@ -43,13 +50,28 @@ if (pkg.version.startsWith('0.0.0')) {
   process.exit(1)
 }
 
-let manifest
+let manifest: ReleaseManifest
 try {
-  manifest = createRelease({
-    skipBuild: flags.has('skip-build'),
+  manifest = readJson('dist/release/manifest.json')
+  const expectedTarball = 'dist/release/' + tarballName(pkg)
+  if (!manifest || manifest.name !== pkg.name || manifest.version !== pkg.version || manifest.tarball !== expectedTarball) {
+    throw new Error('release manifest does not match package name/version/tarball; run `npm run release:pack`')
+  }
+  if (manifest.gitCommit !== git(['rev-parse', 'HEAD'])) {
+    throw new Error('release manifest does not match HEAD; run `npm run release:pack`')
+  }
+  if (manifest.sha256 !== sha256(manifest.tarball) || manifest.sha512 !== sha512Base64(manifest.tarball)) {
+    throw new Error('tarball checksum does not match the release manifest; run `npm run release:pack`')
+  }
+  const report = runPreflight({
+    publish: !dryRun,
+    authCheck: !dryRun,
     registryCheck: flags.has('registry-check') || dryRun === false,
     registry,
+    skipPackCheck: true,
+    allowExistingTag: flags.has('allow-existing-tag'),
   })
+  if (printPreflight(report, pkg) > 0) throw new Error('release preflight failed')
 } catch (failure) {
   console.error('release-publish: ' + failure.message)
   process.exit(1)
@@ -57,6 +79,7 @@ try {
 
 const publishArgs = ['publish', abs(manifest.tarball), '--access', 'public', '--tag', tag, '--ignore-scripts']
 if (registry) publishArgs.push('--registry', registry)
+if (flags.has('provenance')) publishArgs.push('--provenance')
 
 if (dryRun) {
   console.log('release-publish: dry run (add --yes to publish)')
@@ -79,28 +102,38 @@ if (published.status !== 0) {
 }
 
 // ---- verify the registry copy matches the inspected tarball ------------------
-const expectedIntegrity = 'sha512-' + sha512Base64(manifest.tarball)
+const expectedIntegrity = 'sha512-' + manifest.sha512
 const viewArgs = ['view', pkg.name + '@' + pkg.version, 'dist.integrity', 'version', '--json']
 if (registry) viewArgs.push('--registry', registry)
-const view = run('npm', viewArgs)
-if (view.status !== 0) {
-  console.warn('release-publish: published, but could not verify the registry copy: ' +
-    String(view.stderr || view.stdout).trim())
-} else {
+for (let attempt = 1; attempt <= 5; attempt += 1) {
+  const view = run('npm', viewArgs)
   let info = null
-  try {
-    info = JSON.parse(view.stdout)
-  } catch {
-    info = null
+  if (view.status === 0) {
+    try {
+      info = JSON.parse(view.stdout)
+    } catch {
+      info = null
+    }
   }
   const integrity = info && (info['dist.integrity'] || info.dist?.integrity)
-  if (integrity && integrity !== expectedIntegrity) {
-    console.error('release-publish: registry integrity does not match the local tarball')
-    console.error('  local : ' + expectedIntegrity)
-    console.error('  remote: ' + integrity)
+  if (typeof integrity === 'string' && /^sha512-[A-Za-z0-9+/]{86}==$/.test(integrity)) {
+    if (integrity !== expectedIntegrity) {
+      console.error('release-publish: registry integrity does not match the local tarball')
+      console.error('  local : ' + expectedIntegrity)
+      console.error('  remote: ' + integrity)
+      console.error('  version is already published; do not publish again. Verify the registry before continuing.')
+      process.exit(1)
+    }
+    console.log('release-publish: registry integrity verified')
+    break
+  }
+  if (attempt === 5) {
+    console.error('release-publish: version is already published, but registry integrity could not be verified after 5 attempts')
+    console.error('  do not publish again. Verify the registry, then continue the remaining release steps.')
     process.exit(1)
   }
-  console.log('release-publish: registry integrity verified')
+  console.warn('release-publish: registry integrity not ready; retrying in 10s (' + attempt + '/5)')
+  await delay(10000)
 }
 
 // ---- local git tag ----------------------------------------------------------
@@ -113,7 +146,8 @@ if (flags.has('no-tag') === false) {
 
 console.log('release-publish: done')
 console.log('  next steps:')
-console.log('    1. git push origin ' + tagName + '   # and push the release commit')
-console.log('    2. npm run release:catalog          # regenerate the plugin market index')
-console.log('    3. create a GitHub/GitLab release and attach ' + manifest.tarball)
-console.log('    4. smoke-test a fresh install: npm run release:smoke')
+console.log('    1. npm run release:catalog          # regenerate the plugin market index')
+console.log('    2. create a GitHub/GitLab release and attach ' + manifest.tarball)
+if (flags.has('no-tag') === false) {
+  console.log('  do not push ' + tagName + ' after a local publish: the tag workflow would publish the same version again')
+}

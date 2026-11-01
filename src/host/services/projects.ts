@@ -1,22 +1,24 @@
+import type { HostContext, Workspace } from '../context.js'
+import type { ProjectDto } from '../../shared/api-types.js'
 import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import { apiError } from '../errors.js'
 import { messages } from '../messages/index.js'
 
-function registryList(ctx) {
+function registryList(ctx: HostContext): Workspace[] {
   return ctx.workspaceRegistry && typeof ctx.workspaceRegistry.list === 'function'
     ? ctx.workspaceRegistry.list()
     : []
 }
 
-function registryGet(ctx, workspaceId) {
+function registryGet(ctx: HostContext, workspaceId: string): Workspace | null | undefined {
   if (ctx.workspaceRegistry && typeof ctx.workspaceRegistry.get === 'function') {
     return ctx.workspaceRegistry.get(workspaceId)
   }
   return registryList(ctx).find(function (item) { return item.id === workspaceId }) || null
 }
 
-async function canonicalExisting(value) {
+async function canonicalExisting(value: unknown): Promise<string> {
   if (typeof value !== 'string' || value.length === 0) return ''
   try {
     const real = await fsp.realpath(value)
@@ -27,7 +29,7 @@ async function canonicalExisting(value) {
   }
 }
 
-export async function workspaceProjectDto(workspace) {
+export async function workspaceProjectDto(workspace: Workspace): Promise<ProjectDto> {
   const canonical = await canonicalExisting(workspace.path)
   return {
     workspaceId: workspace.id,
@@ -38,7 +40,7 @@ export async function workspaceProjectDto(workspace) {
   }
 }
 
-export async function findWorkspaceByCanonicalPath(ctx, canonicalPath) {
+export async function findWorkspaceByCanonicalPath(ctx: HostContext, canonicalPath: string): Promise<Workspace | null> {
   for (const workspace of registryList(ctx)) {
     const current = await canonicalExisting(workspace.path)
     if (current === canonicalPath) return workspace
@@ -46,7 +48,7 @@ export async function findWorkspaceByCanonicalPath(ctx, canonicalPath) {
   return null
 }
 
-export async function addProject(ctx, requestedPath, requestedTitle) {
+export async function addProject(ctx: HostContext, requestedPath: string, requestedTitle?: string): Promise<{ created: boolean; project: ProjectDto }> {
   if (typeof requestedPath !== 'string' || path.isAbsolute(requestedPath) === false) {
     throw apiError(400, 'bad-project-path', messages.badRoot)
   }
@@ -68,13 +70,13 @@ export async function addProject(ctx, requestedPath, requestedTitle) {
   const title = typeof requestedTitle === 'string' && requestedTitle.trim().length > 0
     ? requestedTitle.trim()
     : undefined
-  let result
+  let result: Workspace | string
   try {
     result = await ctx.workspaceRegistry.create(canonicalPath, title)
   } catch (error) {
     throw apiError(500, 'project-create-failed', messages.projectCreateFailed)
   }
-  let workspace = null
+  let workspace: Workspace | null | undefined = null
   if (result && typeof result === 'object' && typeof result.id === 'string') {
     workspace = registryGet(ctx, result.id) || result
   }
@@ -86,7 +88,7 @@ export async function addProject(ctx, requestedPath, requestedTitle) {
   return { created: true, project: await workspaceProjectDto(workspace) }
 }
 
-export function getRegisteredWorkspace(ctx, workspaceId) {
+export function getRegisteredWorkspace(ctx: HostContext, workspaceId: string): Workspace {
   if (typeof workspaceId !== 'string' || workspaceId.length === 0) {
     throw apiError(404, 'workspace-not-found', messages.workspaceNotFound)
   }
@@ -97,7 +99,7 @@ export function getRegisteredWorkspace(ctx, workspaceId) {
   return workspace
 }
 
-export async function requireProject(ctx, workspaceId) {
+export async function requireProject(ctx: HostContext, workspaceId: string): Promise<{ workspace: Workspace; canonicalPath: string; project: ProjectDto }> {
   const workspace = getRegisteredWorkspace(ctx, workspaceId)
   let canonicalPath
   try {

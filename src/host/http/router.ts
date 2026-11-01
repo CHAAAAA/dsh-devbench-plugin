@@ -6,8 +6,10 @@ import { readConfig } from '../storage/config.js'
 import { readJsonBody } from './body.js'
 import { assertTrusted } from './security.js'
 import { routes } from './routes/index.js'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { HostContext } from '../context.js'
 
-export function sendJson(res, status, payload) {
+export function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   const body = JSON.stringify(payload)
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -23,7 +25,7 @@ function findRoute(method, route) {
   }) || null
 }
 
-export async function handleHttp(ctx, req, res) {
+export async function handleHttp(ctx: HostContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
     if (req.method === 'OPTIONS') {
       res.writeHead(204)
@@ -44,8 +46,8 @@ export async function handleHttp(ctx, req, res) {
       return
     }
     const config = await readConfig()
-    let bodyPromise
-    function readBody() {
+    let bodyPromise: Promise<Record<string, unknown>> | undefined
+    function readBody(): Promise<Record<string, unknown>> {
       if (bodyPromise === undefined) bodyPromise = readJsonBody(req)
       return bodyPromise
     }

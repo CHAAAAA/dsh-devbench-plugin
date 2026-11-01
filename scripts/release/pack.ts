@@ -4,16 +4,17 @@
  *
  * Flags:
  *   --registry-check  confirm the version is not published yet
- *   --skip-build      reuse the existing dist/client.js (not recommended)
+ *   --skip-build      reuse host and client output after a successful check
  */
 import { createRelease } from '../lib/pack.js'
 import { parseArgs } from '../lib/util.js'
 
-const { flags } = parseArgs()
+const { flags, values } = parseArgs()
 try {
   createRelease({
     skipBuild: flags.has('skip-build'),
     registryCheck: flags.has('registry-check'),
+    registry: values.get('registry'),
   })
 } catch (failure) {
   console.error('release-pack: ' + failure.message)

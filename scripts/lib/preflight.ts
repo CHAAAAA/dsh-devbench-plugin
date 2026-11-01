@@ -8,6 +8,7 @@
  */
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
+import vm from 'node:vm'
 import {
   ROOT,
   SEMVER,
@@ -22,9 +23,31 @@ import {
   tarballName,
 } from './util.js'
 
+interface PreflightResult {
+  level: 'pass' | 'warn' | 'error'
+  scope: string
+  message?: string
+}
+
+interface PreflightReport {
+  results: PreflightResult[]
+  errors: PreflightResult[]
+  warnings: PreflightResult[]
+}
+
+interface PreflightOptions {
+  publish?: boolean
+  authCheck?: boolean
+  registryCheck?: boolean
+  registry?: string
+  skipPackCheck?: boolean
+  allowExistingTag?: boolean
+}
+
 const REQUIRED_PACK_FILES = [
   'package.json',
   'README.md',
+  'README_en.md',
   'LICENSE',
   'dist/index.js',
   'dist/client.js',
@@ -103,8 +126,8 @@ function matchFileEntry(entries, entry) {
  * Validate the file list of a packed tarball against the runtime contract.
  * Exported so `release:pack` can reuse it on the real tarball.
  */
-export function validatePackEntries(entries, pkg) {
-  const results = []
+export function validatePackEntries(entries: string[], pkg: { files?: string[] }): PreflightResult[] {
+  const results: PreflightResult[] = []
   const ok = (scope, message) => results.push({ level: 'pass', scope, message })
   const warn = (scope, message) => results.push({ level: 'warn', scope, message })
   const error = (scope, message) => results.push({ level: 'error', scope, message })
@@ -115,10 +138,16 @@ export function validatePackEntries(entries, pkg) {
       error('tarball', 'missing runtime file: ' + required)
     }
   }
-  const hostFiles = files.filter((file) => file.startsWith('dist/host/'))
-  if (hostFiles.length < 30) {
-    error('tarball', 'only ' + hostFiles.length + ' host files packed; expected the whole dist/host tree')
+  const checkDirectory = (directory: string): void => {
+    if (!exists(directory)) return
+    for (const entry of readdirSync(abs(directory), { withFileTypes: true })) {
+      const child = path.posix.join(directory, entry.name)
+      if (entry.isDirectory()) checkDirectory(child)
+      else if (!files.includes(child)) error('tarball', 'missing compiled runtime file: ' + child)
+    }
   }
+  checkDirectory('dist/host')
+  checkDirectory('dist/shared')
   for (const forbidden of FORBIDDEN_PACK_PREFIXES) {
     const hit = files.find((file) => file.startsWith(forbidden))
     if (hit) error('tarball', 'should not ship ' + forbidden + ' (found ' + hit + ')')
@@ -173,9 +202,9 @@ function packDryRunFiles() {
  *   existing locally (GitHub Actions runs on the pushed tag).
  * @returns {{ results: Array<{level: string, scope: string, message?: string}>, errors: Array<object>, warnings: Array<object> }}
  */
-export function runPreflight(options) {
+export function runPreflight(options?: PreflightOptions): PreflightReport {
   const settings = options || {}
-  const results = []
+  const results: PreflightResult[] = []
   const ok = (scope, message) => results.push({ level: 'pass', scope, message })
   const warn = (scope, message) => results.push({ level: 'warn', scope, message })
   const error = (scope, message) => results.push({ level: 'error', scope, message })
@@ -202,6 +231,28 @@ export function runPreflight(options) {
   }
   if (SEMVER.test(version) === false) error('package.json', 'version is not valid SemVer: ' + version)
   else ok('package.json', 'version ' + version)
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  for (const file of ['README.md', 'README_en.md']) {
+    if (!exists(file)) {
+      error(file, 'missing release documentation')
+      continue
+    }
+    const content = readText(file)
+    const tableVersion = content.match(/^\|\s*(?:Version|版本)\s*\|\s*\*\*([^*]+)\*\*/m)?.[1]
+    if (tableVersion !== version) error(file, 'version table must show ' + version)
+    const installVersions = Array.from(content.matchAll(new RegExp(escapedName + '@([^\\s`]+)', 'g')), (match) => match[1])
+    if (installVersions.length < 2 || installVersions.some((value) => value !== version)) {
+      error(file, 'plugin-page and CLI install examples must use ' + name + '@' + version)
+    }
+    const tarballVersions = Array.from(content.matchAll(new RegExp(escapedName + '-([^\\s/`]+)\\.tgz', 'g')), (match) => match[1])
+    if (tarballVersions.length === 0 || tarballVersions.some((value) => value !== version)) {
+      error(file, 'tarball example must use ' + tarballName(pkg))
+    }
+    const translation = file === 'README.md' ? 'README_en.md' : 'README.md'
+    if (!exists(translation) || (!content.includes('](' + translation + ')') && !content.includes('](./' + translation + ')'))) {
+      error(file, 'missing working translation link to ' + translation)
+    }
+  }
   for (const field of ['description', 'license']) {
     if (typeof pkg[field] !== 'string' || pkg[field].trim() === '') {
       error('package.json', field + ' must not be empty')
@@ -341,6 +392,15 @@ export function runPreflight(options) {
   } else {
     ok('dist/shared/protocol.js', 'shared protocol present')
   }
+  if (exists('dist/index.js')) {
+    const loaded = run(process.execPath, ['--input-type=module', '-e',
+      'const plugin = await import("./dist/index.js"); ' +
+      'if (!Array.isArray(plugin.inject) || typeof plugin.apply !== "function") throw new Error("invalid host exports");',
+    ], { timeout: 15000 })
+    if (loaded.error || loaded.status !== 0) {
+      error('host build', 'cannot load compiled entry: ' + (loaded.error?.message || String(loaded.stderr).trim()))
+    } else ok('host build', 'compiled entry loads')
+  }
   if (!exists('cordis.patch.yml')) error('cordis.patch.yml', 'missing bundle patch file')
   if (!exists('icon.svg')) error('icon.svg', 'missing plugin icon')
   else if (readText('icon.svg').trim().startsWith('<svg') === false) error('icon.svg', 'is not an SVG document')
@@ -363,21 +423,32 @@ export function runPreflight(options) {
   const clientExport = pkg.exports && resolveExport(pkg, './client')
   if (clientExport && exists(clientExport)) {
     const code = readText(clientExport)
-    const idNeedles = [
-      'id: ' + JSON.stringify(name),
-      'id: "' + name + '"',
-      "id: '" + name + "'",
-    ]
-    const checks = [
-      ['__ModuleLoader__ registration', code.includes('window.__ModuleLoader__.load')],
-      ['module id equals package name', idNeedles.some((needle) => code.includes(needle))],
-      ['factory(require) contract', code.includes('factory(require)')],
-      ['react externalized', code.includes('require("react")')],
-      ['no ESM statements', code.includes('import ') === false],
-    ]
-    for (const [label, passed] of checks) {
-      if (passed) ok('client bundle', label)
-      else error('client bundle', label)
+    try {
+      let definition: { id?: unknown, factory?: (require: (id: string) => unknown) => unknown }
+      const reactRequests: string[] = []
+      vm.runInNewContext(code, {
+        window: { __ModuleLoader__: { load(value: typeof definition) { definition = value } } },
+        console, setTimeout, clearTimeout, AbortController, URL, Intl,
+      }, { filename: clientExport, timeout: 1000 })
+      if (definition?.id !== name || typeof definition.factory !== 'function') {
+        throw new Error('module must register the package id and a factory')
+      }
+      const plugin: unknown = vm.runInNewContext('definition.factory(require)', {
+        definition,
+        require(id: string) {
+          if (id !== 'react') throw new Error('unexpected external module: ' + id)
+          reactRequests.push(id)
+          return { createElement() {} }
+        },
+      }, { timeout: 1000 })
+      if (reactRequests.length !== 1 || !plugin || typeof plugin !== 'object' ||
+          !('apply' in plugin) || typeof plugin.apply !== 'function' ||
+          !('inject' in plugin) || !Array.isArray(plugin.inject)) {
+        throw new Error('factory must load React and return plugin inject/apply')
+      }
+      ok('client bundle', 'module registers, loads external React and returns a plugin')
+    } catch (failure) {
+      error('client bundle', 'invalid loader contract: ' + failure.message)
     }
     const size = statSync(abs(clientExport)).size
     if (size < 50 * 1024) warn('client bundle', 'suspiciously small: ' + size + ' bytes')
@@ -476,7 +547,9 @@ export function runPreflight(options) {
       }
     }
     if (settings.authCheck === true) {
-      const whoami = run('npm', ['whoami'])
+      const args = ['whoami']
+      if (settings.registry) args.push('--registry', settings.registry)
+      const whoami = run('npm', args)
       if (whoami.status !== 0) {
         error('npm auth', 'not logged in; run `npm login` and retry')
       } else ok('npm auth', String(whoami.stdout).trim())
@@ -502,7 +575,7 @@ export function runPreflight(options) {
   return finish(results)
 }
 
-function finish(results) {
+function finish(results: PreflightResult[]): PreflightReport {
   return {
     results,
     errors: results.filter((item) => item.level === 'error'),
@@ -511,7 +584,7 @@ function finish(results) {
 }
 
 /** Print a preflight result set; returns the number of blocking errors. */
-export function printPreflight(report, pkg) {
+export function printPreflight(report: PreflightReport, pkg?: { name: string, version: string }): number {
   const header = pkg ? pkg.name + '@' + pkg.version : 'unknown package'
   console.log('release-preflight: ' + header)
   for (const item of report.results) {

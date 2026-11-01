@@ -7,9 +7,9 @@
 | 项 | 值 |
 | --- | --- |
 | 包名 | `dsh-devbench-plugin` |
-| 版本 | **1.0.4** |
+| 版本 | **1.0.5** |
 | DSH 兼容 | `>=0.2.1-rc.3 <0.3.0-0` |
-| Node.js | >= 20.18.1 |
+| Node.js | >= 24.9.0 |
 | 许可证 | MIT |
 
 ## 功能
@@ -18,12 +18,12 @@
 - **需求管理**：按工作区保存 Markdown 需求（标题、状态、正文、资料文件、关联会话与关联提交）。需求列表支持「标题 / 全文」两档检索（全文命中显示正文片段），并支持草稿恢复、离开拦截与保存冲突处理。
 - **项目文档**：每个项目都有一个「文档」页签，用于记录发布流程、常用提示词等简单文档。文档以 Markdown 文件保存在「需求根目录」下该项目目录的 `.documents/` 中，不会进入项目仓库。文件列表只显示标题，支持按标题与全文检索；编辑与需求一样使用 Markdown 编辑器并实时预览。
 - **需求收藏**：在需求列表或详情页点击星标收藏需求，并可用「仅收藏」筛选列表。
-- **需求执行**：从需求一键创建会话并发送模板化提示词；可为需求启用按需求 Git worktree（分支 `devbench/<需求ID>`）。
+- **需求执行**：从需求一键创建会话并发送模板化提示词；创建成功后自动关联并打开会话，失败时显示错误。可为需求启用按需求 Git worktree（分支 `devbench/<需求ID>`）。
 - **AI 提交**：后台 Agent 生成中文 Conventional Commit 提交信息，确认预览后提交；不会自动 push，提交提示词模板可在设置页修改。
 - **Git 操作**：项目「概览」展示未提交变更，支持手动提交、拉取（`--ff-only`）与推送（自动建立 upstream）。
 - **代码评审**：可对任意提交发起评审（完整提交消息、变更文件树与逐文件差异），也可评审当前未提交变更；评审文件写入 `.dsh-reviews/`。
 - **工作树管理**：三态列表（已创建 / 目录缺失 / 已启用未创建），支持创建、查看改动、AI 提交、推送、用 VS Code / 终端 / 文件管理器打开、复制路径与分支、清理残留注册以及删除（保留分支）。
-- **任务中心**：查看提交 / 评审 / 需求任务的状态，支持取消、重试与打开会话。
+- **任务中心**：查看提交 / 评审 / 需求任务的状态，支持取消、重试与打开会话。任务记录字段损坏时提示任务不可用并保留原文件；旧记录中缺失或为 `null` 的可选字段继续兼容。
 - **主页与周报**：跨项目的最近任务与未完成任务、本地生成的周报，以及当前 DSH profile 的 MCP 服务概览。
 - **MCP 服务管理**：查看、添加、修改、启用/禁用或删除当前 DSH profile 的 MCP 条目。修改写入该 profile 的 `cordis.patch.yml` 并自动备份，疑似密钥以掩码显示。
 - **会话关联**：在会话头部把当前会话关联到某个需求，或跳回需求。
@@ -35,14 +35,14 @@
 
 1. 打开 DSH 的「插件」页（部分版本位于「设置 → 插件」）。
 2. 点「添加插件」。
-3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.4`。
+3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.5`。
 4. 等待安装完成，点「立即启用」。
 5. 如果提示需要重启，完全退出并重新打开 DSH（不要只关闭窗口）。
 
 ### CLI
 
 ```sh
-dsh plugin --profile web add dsh-devbench-plugin@1.0.4
+dsh plugin --profile web add dsh-devbench-plugin@1.0.5
 ```
 
 ### 离线 tarball
@@ -50,7 +50,7 @@ dsh plugin --profile web add dsh-devbench-plugin@1.0.4
 用绝对路径安装发布的 tarball：
 
 ```sh
-dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.4.tgz
+dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.5.tgz
 ```
 
 请保留 tarball 原文件：profile 依赖会记录它的 `file:` 绝对路径。
@@ -62,9 +62,15 @@ dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.4.tgz
 
 ## 开发与协作
 
-源码使用 TypeScript。开发需要 Node.js >= 20.18.1，并执行 `npm ci`（会自动构建 `dist/`）；修改宿主代码后执行 `npm run build` 并重启 DSH，修改客户端代码后执行 `npm run build` 并刷新浏览器。
+源码使用 TypeScript。开发需要 Node.js >= 24.9.0，并执行 `npm ci`（会自动构建 `dist/`）；修改宿主代码后执行 `npm run build` 并重启 DSH，修改客户端代码后执行 `npm run build` 并刷新浏览器。
 
 开发、测试与发布规范见 [AGENTS.md](AGENTS.md)。
+
+HTTP 请求与响应共用 DTO 类型；客户端保留宿主 React 的官方 Hook 类型。页面测试使用 React、ReactDOM 和 happy-dom，通过 DOM 事件与模拟接口响应验证交互；测试依赖不会打入发布产物。
+
+`npm run typecheck` 分别检查 Host、Client 和测试环境；CI 覆盖 Node.js 24.9.0 与 24。准备本地发布时，依次运行 `npm run check`、`npm run release:pack -- --skip-build`、`npm run release:smoke` 和 `npm run release:publish`。最后一步默认只校验并预览，复用已验证的 tarball；只有显式添加 `-- --yes` 才会检查发布权限并上传。修改产物后须重新打包和验证。
+
+也可以通过推送与包版本对应的 `v<version>` tag 触发 CI 发布。本地发布与 CI 发布二选一：本地已发布的版本不要再推送 tag 触发重复发布。
 
 ## 许可证
 

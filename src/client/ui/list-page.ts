@@ -9,7 +9,10 @@ export const LIST_PAGE_SIZE = 10
  * reviews and tasks are already loaded by /state or /project/overview, so
  * "load more" reveals the next page locally instead of issuing another request.
  */
-export function useListPage(items, pageSize?) {
+export function useListPage<T>(items: T[], pageSize?: number): {
+  rows: T[]; total: number; listed: number; size: number; hasMore: boolean
+  loadMore(): void; reset(): void
+} {
   const size = pageSize === undefined ? LIST_PAGE_SIZE : pageSize
   const [limit, setLimit] = useState(size)
   const list = Array.isArray(items) ? items : []

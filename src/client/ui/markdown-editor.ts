@@ -1,5 +1,7 @@
 /** Reusable Markdown editing surface: toolbar, shortcuts and live split preview. */
 import { h, useRef, useState } from '../runtime.js'
+import type { ReactElement } from 'react'
+import type { Translate } from '../runtime.js'
 import { renderMarkdown } from './markdown.js'
 
 const MODES = ['edit', 'split', 'preview']
@@ -183,9 +185,21 @@ function restoreSelection(ref, start, end) {
 }
 
 /** Toolbar and split editor shared by the inline editor and the popup editor. */
-export function MarkdownEditor(props) {
+export function MarkdownEditor(props: {
+  t: Translate
+  value: string
+  height?: string
+  disabled?: boolean
+  placeholder?: string
+  ariaLabel?: string
+  className?: string
+  onChange?: (value: string) => void
+  onSave?: () => void
+  onEscape?: () => void
+  onOpenHelp?: () => void
+}): ReactElement {
   const t = props.t
-  const textareaRef = useRef(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [mode, setMode] = useState('split')
   const value = typeof props.value === 'string' ? props.value : ''
   const height = props.height || '48vh'
@@ -291,7 +305,7 @@ export function MarkdownEditor(props) {
 }
 
 /** Syntax cheat sheet opened from the editor toolbar. */
-export function MarkdownHelp(props) {
+export function MarkdownHelp(props: { t: Translate }): ReactElement {
   const t = props.t
   return h('div', { className: 'devbench-md-help' },
     h('div', { className: 'devbench-hint' }, t('markdown.help.intro')),

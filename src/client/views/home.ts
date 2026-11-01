@@ -3,6 +3,7 @@ import {
   h, useState, useEffect, useRef, errorText, isAbortError, t as translate,
 } from '../runtime.js'
 import * as api from '../core/api.js'
+import type { Dashboard, WeeklyReport } from '../../shared/api-types.js'
 import { Banner, formatTime, formatShortTime } from '../ui/common.js'
 import { ListFooter, useListPage } from '../ui/list-page.js'
 import { useEmptySessions } from '../ui/session-row.js'
@@ -179,8 +180,8 @@ function dayText(value) {
 export function HomeView(props) {
   const t = props.t || translate
   const showToast = typeof props.showToast === 'function' ? props.showToast : function () {}
-  const [dashboard, setDashboard] = useState({ loading: true, error: '', data: null })
-  const [weekly, setWeekly] = useState({ loading: false, error: '', data: null })
+  const [dashboard, setDashboard] = useState<{ loading: boolean; error: string; data: Dashboard | null }>({ loading: true, error: '', data: null })
+  const [weekly, setWeekly] = useState<{ loading: boolean; error: string; data: WeeklyReport | null }>({ loading: false, error: '', data: null })
   const dashboardSeqRef = useRef(0)
   const weeklySeqRef = useRef(0)
   const weeklyBusyRef = useRef(false)
@@ -268,17 +269,16 @@ export function HomeView(props) {
     }
   }, [])
   const data = dashboard.data && typeof dashboard.data === 'object' ? dashboard.data : null
-  const totals = data && data.totals && typeof data.totals === 'object' ? data.totals : {}
-  const week = data && data.week && typeof data.week === 'object' ? data.week : {}
+  const totals: Partial<Dashboard['totals']> = data && data.totals && typeof data.totals === 'object' ? data.totals : {}
+  const week: Partial<Dashboard['week']> = data && data.week && typeof data.week === 'object' ? data.week : {}
   const recentTasks = data && Array.isArray(data.recentTasks) ? data.recentTasks : []
   const activeTasks = data && Array.isArray(data.activeTasks) ? data.activeTasks : []
   const runningRequirements = data && Array.isArray(data.runningRequirements) ? data.runningRequirements : []
   const recentPage = useListPage(recentTasks)
-  const activeEntries = activeTasks.map(function (task) {
-    return { kind: 'task', task: task }
-  }).concat(runningRequirements.map(function (item) {
-    return { kind: 'running', item: item }
-  }))
+  const activeEntries = [
+    ...activeTasks.map(function (task) { return { kind: 'task' as const, task: task } }),
+    ...runningRequirements.map(function (item) { return { kind: 'running' as const, item: item } }),
+  ]
   const activePage = useListPage(activeEntries)
   const statItems = [
     { key: 'projects', label: 'home.stats.projects', value: safeCount(totals.projects) },
@@ -355,8 +355,8 @@ export function HomeView(props) {
         ? h('div', { className: 'devbench-empty-panel' }, t('home.noActiveTasks'))
         : h('div', null, activeRows, h(ListFooter, { t: t, page: activePage }))))
   const weeklyData = weekly.data && typeof weekly.data === 'object' ? weekly.data : null
-  const weeklyCounts = weeklyData && weeklyData.counts && typeof weeklyData.counts === 'object' ? weeklyData.counts : {}
-  const weeklyWeek = weeklyData && weeklyData.week && typeof weeklyData.week === 'object' ? weeklyData.week : {}
+  const weeklyCounts: Partial<WeeklyReport['counts']> = weeklyData && weeklyData.counts && typeof weeklyData.counts === 'object' ? weeklyData.counts : {}
+  const weeklyWeek: Partial<WeeklyReport['week']> = weeklyData && weeklyData.week && typeof weeklyData.week === 'object' ? weeklyData.week : {}
   const weeklyMarkdown = weeklyData && typeof weeklyData.markdown === 'string' ? weeklyData.markdown : ''
   const weeklySummary = weeklyData
     ? h('div', { className: 'devbench-weekly-summary' },

@@ -3,7 +3,7 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022"],
     "types": ["node"],
     "strict": false,
     "noImplicitAny": false,
@@ -17,6 +17,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
+  "include": ["src/index.ts", "src/host/**/*.ts", "src/shared/**/*.ts", "scripts/**/*.ts", "eslint.config.ts"],
   "exclude": ["node_modules", "dist", "coverage"]
 }

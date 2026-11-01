@@ -1,6 +1,8 @@
-import test from 'node:test'
+import test, { afterEach, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { initRuntime } from '../../src/client/runtime.js'
+import { act } from 'react'
+import { setRuntimeContext } from '../../src/client/runtime.js'
+import { render as renderDom, nodes as currentNodes, cleanup, textOf, mockApi, reply, flushAsyncWork } from './helpers.js'
 import { uiStore, setSelection, setListState, resetListState } from '../../src/client/core/ui-store.js'
 import { WelcomeView } from '../../src/client/views/welcome.js'
 import { SettingsView } from '../../src/client/views/settings.js'
@@ -18,8 +20,9 @@ import { ProjectWorktrees } from '../../src/client/views/project/worktrees.js'
 import { ProjectReviews } from '../../src/client/views/project/reviews.js'
 import { ProjectTasks } from '../../src/client/views/project/tasks.js'
 import {
-  ProjectRequirements, titleMatches, mergeSearchItems, createFullTextSearch,
+  ProjectRequirements, titleMatches,
 } from '../../src/client/views/project/requirements.js'
+import { mergeSearchItems, createFullTextSearch } from '../../src/client/core/search.js'
 import {
   ProjectDocuments, documentTitleMatches,
 } from '../../src/client/views/project/documents.js'
@@ -31,106 +34,35 @@ import { DevbenchIcon, IconReq } from '../../src/client/ui/icons.js'
 import { CSS } from '../../src/client/ui/styles.js'
 
 const anyGlobal: any = globalThis
-const instances = new Map()
-let current = null
-let hookIndex = 0
-function slot(init) {
-  const index = hookIndex++
-  if (!(index in current.hooks)) current.hooks[index] = init()
-  return current.hooks[index]
-}
-const React = {
-  Fragment: 'Fragment',
-  createElement(type, props) {
-    return { type: type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) }
-  },
-  useState(initial) {
-    const item = slot(function () { return { value: initial } })
-    function setValue(next) {
-      item.value = typeof next === 'function' ? next(item.value) : next
+let afterRender: (() => Promise<void>) | null = null
+const pendingResponses: Array<() => void> = []
+function respondOnce(endpoint: string, value: unknown, error = ''): void {
+  const fallback = globalThis.fetch
+  let used = false
+  globalThis.fetch = async (url, init) => {
+    if (!used && new URL(String(url), 'http://127.0.0.1').pathname.endsWith(endpoint)) {
+      used = true
+      if (error) throw new Error(error)
+      return reply(value)
     }
-    return [item.value, setValue]
-  },
-  useRef(initial) { return slot(function () { return { current: initial } }) },
-  useEffect(fn, deps) { slot(function () { return { fn: fn, deps: deps } }) },
-  useCallback(fn, deps) {
-    const item = slot(function () { return { fn: fn, deps: deps } })
-    const same = item.deps && deps && item.deps.length === deps.length &&
-      item.deps.every(function (value, index) { return Object.is(value, deps[index]) })
-    if (!same) { item.fn = fn; item.deps = deps }
-    return item.fn
-  },
-  useSyncExternalStore(subscribe, snapshot) { slot(function () { return {} }); return snapshot() },
-}
-initRuntime(function () { return React })
-function renderNode(node, path, out) {
-  if (node === null || node === undefined || node === false || node === true) return
-  if (Array.isArray(node)) {
-    node.forEach(function (child, index) { renderNode(child, path + '.' + index, out) })
-    return
+    return fallback(url, init)
   }
-  if (typeof node !== 'object') return
-  if (typeof node.type === 'function') {
-    const key = path + ':' + (node.props && node.props.key ? node.props.key : '')
-    let instance = instances.get(key)
-    if (!instance) { instance = { hooks: [] }; instances.set(key, instance) }
-    const merged = Object.assign({}, node.props)
-    if (node.children.length === 1) merged.children = node.children[0]
-    else if (node.children.length > 1) merged.children = node.children
-    const previous = current
-    current = instance
-    hookIndex = 0
-    const rendered = node.type(merged)
-    current = previous
-    renderNode(rendered, key, out)
-    return
-  }
-  out.push(node)
-  if (!Array.isArray(node.children)) return
-  node.children.forEach(function (child, index) { renderNode(child, path + '.' + index, out) })
 }
-function render(element) {
-  const out = []
-  renderNode(element, 'root', out)
-  return out
-}
-function textOf(value, out) {
-  const list = out || []
-  if (Array.isArray(value)) {
-    value.forEach(function (item) { textOf(item, list) })
-    return list
+async function render(element): Promise<ReturnType<typeof currentNodes>> {
+  let values = await renderDom(element)
+  if (afterRender) {
+    const action = afterRender
+    afterRender = null
+    await action()
+    values = currentNodes()
   }
-  if (typeof value === 'string') { list.push(value); return list }
-  if (value && typeof value === 'object') {
-    list.push.apply(list, textOf(value.children, []))
-  }
-  return list
+  return values
 }
-/** Seeds the ProjectDevbenchPage hook slots by index; view state lives in uiStore. */
-function seedDevbenchInstance() {
-  const instance = { hooks: [] }
-  instance.hooks[0] = {}
-  instance.hooks[1] = { value: { data: stateData, loading: false, error: '' } }
-  instance.hooks[2] = { value: { loading: false, error: '', data: overviewData, key: 'w1' } }
-  instance.hooks[3] = { value: { loading: false, error: '', data: [taskData], key: 'w1' } }
-  instance.hooks[4] = { value: { loading: false, error: '', data: null, name: '', key: 'w1' } }
-  instance.hooks[5] = { value: '' }
-  instance.hooks[6] = { value: false }
-  instance.hooks[7] = { value: '' }
-  instance.hooks[8] = { value: false }
-  instance.hooks[9] = { value: '' }
-  instance.hooks[10] = { value: '' }
-  instance.hooks[11] = { value: false }
-  instance.hooks[12] = { value: false }
-  instance.hooks[13] = { value: null }
-  instance.hooks[14] = { value: 0 }
-  instance.hooks[15] = { value: [] }
-  instance.hooks[16] = { value: '' }
-  // REQ-20261027-003: reviewingUncommitted busy state (empty = idle); declared
-  // after the 16 useState and 17 useRef legacy hooks above.
-  instance.hooks[34] = { value: '' }
-  instances.set('root:', instance)
-  return instance
+function mockDevbench(options: { overview?: unknown, tasks?: unknown[], openTargets?: string[] } = {}): void {
+  respondOnce('/state', stateData)
+  respondOnce('/project/overview', options.overview || overviewData)
+  respondOnce('/project/tasks', { tasks: options.tasks || [taskData] })
+  respondOnce('/project/open-targets', { targets: options.openTargets || [] })
 }
 function worktreeProps(overrides?) {
   return Object.assign({
@@ -140,22 +72,12 @@ function worktreeProps(overrides?) {
     onOpenCommitPreview: noop, onChanged: noop,
   }, overrides)
 }
-function seedWorktreesHooks(options?) {
-  const opts = options || {}
-  const instance = { hooks: [] }
-  // Hook order of the master-detail worktree tab:
-  // state, changesState, changesOpen, busy, pruneBusy, refs..., useUiState, useListPage, effects...
-  instance.hooks[0] = {
-    value: opts.list || { loading: false, error: '', data: worktreesData, key: 'w1' },
-  }
-  instance.hooks[1] = {
-    value: opts.changes || { loading: false, error: '', data: null, key: '' },
-  }
-  instance.hooks[2] = { value: opts.expanded !== undefined && opts.expanded !== '' && opts.expanded !== false }
-  instance.hooks[3] = { value: opts.busy || {} }
-  instance.hooks[4] = { value: opts.pruneBusy === true }
-  instances.set('root:', instance)
-  return instance
+function mockWorktrees(options: any = {}): void {
+  cleanup()
+  const state = options.list || { data: worktreesData }
+  respondOnce('/project/worktrees', state.data, state.error)
+  if (options.changes) respondOnce('/project/worktree/changes', options.changes.data, options.changes.error)
+  if (options.expanded) afterRender = async () => { await findButton(currentNodes(), 'project.worktrees.changes').props.onClick() }
 }
 function workspaceChangesProps(overrides?) {
   return Object.assign({
@@ -163,31 +85,24 @@ function workspaceChangesProps(overrides?) {
     onChanged: noop, showToast: noop,
   }, overrides)
 }
-function seedWorkspaceChangesHooks(options?, instanceKey?) {
-  const opts = options || {}
-  const instance = { hooks: [] }
-  // Hook order of the working-tree panel (REQ-20261028-003 moved it from the
-  // commits tab to the overview tab; hook order is unchanged):
-  // 0 state, 1 busy, 2 commitOpen, 3 message, 4 committing, 5 showDiff,
-  // 6 collapsed, 7 request seq ref, 8 project ref, 9 load effect (not seeded).
-  instance.hooks[0] = {
-    value: opts.state || {
-      loading: opts.loading === true,
-      error: opts.error || '',
-      data: opts.data === undefined ? workspaceChangesData : opts.data,
-      key: 'w1',
-    },
+function mockWorkspaceChanges(options: any = {}): void {
+  const state = options.state || options
+  if (state.loading) {
+    const fallback = globalThis.fetch
+    let used = false
+    globalThis.fetch = (url, init) => {
+      if (used || !String(url).includes('/project/changes?')) return fallback(url, init)
+      used = true
+      return new Promise<Response>(resolve => { pendingResponses.push(() => resolve(reply(workspaceChangesData))) })
+    }
+  } else respondOnce('/project/changes', state.data === undefined ? workspaceChangesData : state.data, state.error)
+  if (options.showDiff || options.commitOpen) afterRender = async () => {
+    if (options.showDiff) await findButton(currentNodes(), 'tabs.overview.workspace.showDiff').props.onClick()
+    if (options.commitOpen) {
+      await findButton(currentNodes(), 'tabs.overview.manualCommit').props.onClick()
+      if (options.message) await currentNodes().find(node => node.type === 'textarea').props.onChange({ target: { value: options.message } })
+    }
   }
-  instance.hooks[1] = { value: opts.busy || '' }
-  instance.hooks[2] = { value: opts.commitOpen === true }
-  instance.hooks[3] = { value: opts.message || '' }
-  instance.hooks[4] = { value: opts.committing === true }
-  instance.hooks[5] = { value: opts.showDiff === true }
-  instance.hooks[6] = { value: opts.collapsed === true }
-  instance.hooks[7] = { current: 0 }
-  instance.hooks[8] = { current: 'w1' }
-  instances.set(instanceKey || 'root:', instance)
-  return instance
 }
 const summary = {
   id: 'REQ-1', title: 'Sample', status: 'new', workspaceId: 'w1',
@@ -281,7 +196,43 @@ function fakeUseSessions(selector) { return selector(sessionsSnapshot) }
 function pendingUseSessions(selector) {
   return selector({ phase: 'pending', ids: [], byId: {} })
 }
-test('all client views render once without undefined references', function () {
+beforeEach(() => {
+  afterRender = null
+  const unexpectedCall = (): never => { throw new Error('unexpected host service call') }
+  setRuntimeContext({
+    effect: unexpectedCall,
+    locale: { bind: () => t, register: () => noop },
+    slots: { inject: unexpectedCall, register: () => noop },
+    layout: { selectPanel: unexpectedCall },
+    uiWorkspace: { openSession: noop, pickDirectory: unexpectedCall },
+    sessions: { create: unexpectedCall },
+    remote: { session: { prompt: unexpectedCall, rename: unexpectedCall } },
+  })
+  mockApi(url => {
+    if (url.pathname.endsWith('/state')) return stateData
+    if (url.pathname.endsWith('/project/overview')) return overviewData
+    if (url.pathname.endsWith('/project/tasks')) return { tasks: [taskData] }
+    if (url.pathname.endsWith('/project/open-targets')) return { targets: ['system'] }
+    if (url.pathname.endsWith('/project/changes')) return workspaceChangesData
+    if (url.pathname.endsWith('/project/worktrees')) return worktreesData
+    if (url.pathname.endsWith('/project/worktree/changes')) return worktreeChangesData
+    if (url.pathname.endsWith('/project/commits')) return { commits: [commitData], hasMore: false }
+    if (url.pathname.endsWith('/requirement/get')) return detailData
+    if (url.pathname.endsWith('/documents')) return { documents: documentSummaries }
+    if (url.pathname.endsWith('/document/get')) return { document: documentSummaries[0], body: documentBody }
+    if (url.pathname.endsWith('/dashboard')) return dashboardData
+    if (url.pathname.endsWith('/mcp')) return { available: true, servers: [] }
+    if (url.pathname.endsWith('/session-link')) return { requirement: null }
+    return {}
+  })
+})
+afterEach(async () => {
+  await act(async () => {
+    pendingResponses.splice(0).forEach(resolve => resolve())
+    await flushAsyncWork()
+  })
+})
+test('all client views render once without undefined references', async function () {
   const views = [
     WelcomeView,
     SettingsView,
@@ -302,7 +253,7 @@ test('all client views render once without undefined references', function () {
     CommitConfirmModal,
     HomeView,
   ]
-  views.forEach(function (View) {
+  for (const View of views) {
     const props = {
       t: t, data: stateData, showToast: noop, reload: function () { return Promise.resolve() },
       runtimeCtx: { uiWorkspace: { pickDirectory: function () { return Promise.resolve('') } } },
@@ -329,22 +280,22 @@ test('all client views render once without undefined references', function () {
       onChangeMessage: noop, onConfirm: noop,
       stateData: stateData, onOpenProject: noop, onOpenSettings: noop,
     }
-    instances.clear()
-    const nodes = render({ type: View, props: props, children: [] })
+    cleanup()
+    const nodes = await render({ type: View, props: props, children: [] })
     assert.equal(nodes.length > 0, true)
-  })
+  }
 })
 
-test('project workbench renders every workspace tab', function () {
-  uiStore.set({
+test('project workbench renders every workspace tab', async function () {
+  act(() => uiStore.set({
     view: 'project', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'overview',
-  })
-  instances.clear()
-  seedDevbenchInstance()
+  }))
+  cleanup()
+  mockDevbench()
   const tabs = ['overview', 'requirements', 'commits', 'worktrees', 'reviews', 'tasks']
-  tabs.forEach(function (tab) {
-    uiStore.set({ activeTab: tab })
-    const nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  for (const tab of tabs) {
+    act(() => uiStore.set({ activeTab: tab }))
+    const nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
     const frame = nodes.find(function (node) { return node.props && node.props.className === 'devbench-workbench' })
     assert.equal(Boolean(frame), true)
     // Two-column workbench: style tag + project sidebar + main pane, no right rail.
@@ -357,9 +308,9 @@ test('project workbench renders every workspace tab', function () {
           textOf(node, []).join(' ').indexOf('project.ai.commitActive') >= 0
       }), true)
     }
-  })
-  uiStore.set({ activeTab: 'overview' })
-  const nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  }
+  act(() => uiStore.set({ activeTab: 'overview' }))
+  const nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
   const tabBar = nodes.find(function (node) {
     return node.props && node.props.className === 'devbench-project-tabs'
   })
@@ -377,19 +328,13 @@ test('project workbench renders every workspace tab', function () {
   assert.equal(reviewsIndex > worktreesIndex, true)
   assert.equal(tabText.indexOf('project.tab.tasks') > reviewsIndex, true)
 })
-test('workbench disables the review action when the repository has no commit', function () {
-  uiStore.set({
+test('workbench disables the review action when the repository has no commit', async function () {
+  act(() => uiStore.set({
     view: 'project', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'overview',
-  })
-  instances.clear()
-  const instance = seedDevbenchInstance()
-  instance.hooks[2] = {
-    value: {
-      loading: false, error: '', key: 'w1',
-      data: Object.assign({}, overviewData, { commits: [] }),
-    },
-  }
-  const nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  }))
+  cleanup()
+  mockDevbench({ overview: { ...overviewData, commits: [] } })
+  const nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
   const reviewButton = nodes.find(function (node) {
     return node.type === 'button' && textOf(node, []).join(' ').indexOf('project.ai.reviewLatest') >= 0
   })
@@ -397,9 +342,9 @@ test('workbench disables the review action when the repository has no commit', f
   assert.equal(reviewButton.props.disabled, true)
   assert.equal(textOf(nodes, []).join(' ').indexOf('project.ai.noCommit') >= 0, true)
 })
-test('review preview falls back to list metadata and sidebar exposes settings', function () {
-  instances.clear()
-  const reviewNodes = render({
+test('review preview falls back to list metadata and sidebar exposes settings', async function () {
+  cleanup()
+  const reviewNodes = await render({
     type: ProjectReviews,
     props: {
       t: t, reviews: [reviewData], selectedName: reviewData.name, selectedReview: reviewData,
@@ -412,8 +357,8 @@ test('review preview falls back to list metadata and sidebar exposes settings', 
   assert.equal(reviewText.indexOf('aaaaaaaa') >= 0, true)
   assert.equal(reviewText.indexOf('feat: sample') >= 0, true)
   assert.equal(reviewText.indexOf('10 B') >= 0, true)
-  instances.clear()
-  const sidebarNodes = render({
+  cleanup()
+  const sidebarNodes = await render({
     type: ProjectSidebar,
     props: {
       t: t, projects: stateData.workspaces, selectedProjectId: 'w1',
@@ -429,15 +374,15 @@ test('review preview falls back to list metadata and sidebar exposes settings', 
   }), true)
 })
 
-test('project reviews label uncommitted targets in the list, detail and search', function () {
+test('project reviews label uncommitted targets in the list, detail and search', async function () {
   const uncommittedReview = {
     name: '20260102-uncommitted-review.md', size: 20,
     modifiedAt: '2026-01-02T00:00:00.000Z', commit: '', commitSubject: '',
     target: 'uncommitted', summary: 'working tree',
   }
-  function renderReviews(selectedName, selectedReview, content) {
-    instances.clear()
-    return render({
+  async function renderReviews(selectedName, selectedReview, content) {
+    cleanup()
+    return await render({
       type: ProjectReviews,
       props: {
         t: t, reviews: [reviewData, uncommittedReview], selectedName: selectedName,
@@ -452,15 +397,15 @@ test('project reviews label uncommitted targets in the list, detail and search',
       return node.type === 'div' && tokens.indexOf('devbench-master-row') >= 0
     })
   }
-  let nodes = renderReviews('', null, { loading: false, error: '', data: null })
+  let nodes = await renderReviews('', null, { loading: false, error: '', data: null })
   let rows = masterRows(nodes)
   assert.equal(rows.length, 2)
   assert.equal(textOf(rows[0], []).join(' ').indexOf('project.review.uncommittedTarget') >= 0, false)
   assert.equal(textOf(rows[1], []).join(' ').indexOf('project.review.uncommittedTarget') >= 0, true)
 
   // Searching for the uncommitted target text keeps only that review.
-  setListState('reviews', { search: 'project.review.uncommitted' })
-  nodes = renderReviews(
+  act(() => setListState('reviews', { search: 'project.review.uncommitted' }))
+  nodes = await renderReviews(
     uncommittedReview.name,
     uncommittedReview,
     {
@@ -480,15 +425,15 @@ test('project reviews label uncommitted targets in the list, detail and search',
   assert.equal(Boolean(detail), true)
   const detailText = textOf(detail, []).join(' ')
   assert.equal(detailText.indexOf('project.review.uncommittedTarget') >= 0, true)
-  setListState('reviews', { search: '' })
-  instances.clear()
+  act(() => setListState('reviews', { search: '' }))
+  cleanup()
 })
-test('requirement list exposes delete only for non-running requirements', function () {
-  uiStore.set({
+test('requirement list exposes delete only for non-running requirements', async function () {
+  act(() => uiStore.set({
     view: 'project', selectedProjectId: 'w1', selectedRequirement: null,
     activeTab: 'requirements',
-  })
-  instances.clear()
+  }))
+  cleanup()
   const props = {
     t: t,
     configured: true,
@@ -496,18 +441,18 @@ test('requirement list exposes delete only for non-running requirements', functi
     onReloadState: function () { return Promise.resolve() },
     showToast: noop,
   }
-  let nodes = render({ type: ProjectRequirements, props: props, children: [] })
+  let nodes = await render({ type: ProjectRequirements, props: props, children: [] })
   let deleteButton = nodes.find(function (node) {
     return node.type === 'button' && node.props && node.props.title === 'project.requirements.delete'
   })
   assert.equal(Boolean(deleteButton), true)
   assert.equal(deleteButton.props.disabled, false)
 
-  instances.clear()
+  cleanup()
   const runningWorkspace = Object.assign({}, stateData.workspaces[0], {
     requirements: [Object.assign({}, summary, { status: 'running' })],
   })
-  nodes = render({
+  nodes = await render({
     type: ProjectRequirements,
     props: Object.assign({}, props, { workspace: runningWorkspace }),
     children: [],
@@ -554,18 +499,20 @@ function requirementFullSearchState(overrides) {
     items: [], hasMore: false, total: 0,
   }, overrides)
 }
-/** Render once to allocate the hooks, then seed the full-text result state slot. */
-function renderRequirementsWithFullSearch(props, state) {
-  instances.clear()
-  render({ type: ProjectRequirements, props: props, children: [] })
-  const instance = instances.get('root:')
-  const index = instance.hooks.findIndex(function (hook) {
-    return hook && hook.value && typeof hook.value === 'object' &&
-      typeof hook.value.scope === 'string' && Array.isArray(hook.value.items)
-  })
-  assert.equal(index >= 0, true)
-  instance.hooks[index].value = state
-  return render({ type: ProjectRequirements, props: props, children: [] })
+async function renderRequirementsWithFullSearch(props, state) {
+  cleanup()
+  respondOnce('/requirement/search', state, state.error)
+  const previousTimeout = globalThis.setTimeout
+  const timers = fakeTimers()
+  anyGlobal.setTimeout = timers.setTimeout
+  try {
+    await render({ type: ProjectRequirements, props, children: [] })
+    if (!state.loading) {
+      act(() => timers.run())
+      await flushAsyncWork()
+    }
+    return currentNodes()
+  } finally { anyGlobal.setTimeout = previousTimeout }
 }
 function fakeTimers() {
   let nextId = 1
@@ -589,19 +536,17 @@ function fakeTimers() {
     },
   }
 }
-function flushMicrotasks() {
-  return new Promise(function (resolve) { setImmediate(resolve) })
-}
-test('requirement search row offers a title/full scope selector and persists the switch', function () {
+function flushMicrotasks() { return flushAsyncWork() }
+test('requirement search row offers a title/full scope selector and persists the switch', async function () {
   try {
-    resetListState('requirements')
-    uiStore.set({
+    act(() => resetListState('requirements'))
+    act(() => uiStore.set({
       view: 'project', selectedProjectId: 'w1', selectedRequirement: null,
       activeTab: 'requirements',
-    })
-    instances.clear()
+    }))
+    cleanup()
     const props = requirementListProps()
-    let nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    let nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     const scopeSelects = nodes.filter(function (node) {
       return node.type === 'select' && node.props['aria-label'] === 'project.requirements.search.scope'
     })
@@ -609,8 +554,8 @@ test('requirement search row offers a title/full scope selector and persists the
     const scopeSelect = scopeSelects[0]
     assert.equal(scopeSelect.props.value, 'title')
     assert.equal(scopeSelect.props.title, 'project.requirements.search.scope')
-    const options = scopeSelect.children[0]
-    assert.deepEqual(options.map(function (option) { return option.props.value }), ['title', 'full'])
+    const options = scopeSelect.children
+    assert.deepEqual(options.map(function (option) { return (option as any).props.value }), ['title', 'full'])
     assert.deepEqual(options.map(function (option) { return textOf(option, []).join(' ') }),
       ['project.requirements.search.title', 'project.requirements.search.full'])
     // 搜索框与状态筛选仍在同一行。
@@ -623,56 +568,46 @@ test('requirement search row offers a title/full scope selector and persists the
     scopeSelect.props.onChange({ target: { value: 'full' } })
     assert.equal(uiStore.state.lists.requirements.scope, 'full')
     assert.equal(uiStore.state.lists.requirements.limit, 10)
-    nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     const switched = nodes.filter(function (node) {
       return node.type === 'select' && node.props['aria-label'] === 'project.requirements.search.scope'
     })[0]
     assert.equal(switched.props.value, 'full')
   } finally {
-    resetListState('requirements')
+    act(() => resetListState('requirements'))
   }
 })
-test('title scope keeps local filtering and never hits the search endpoint', function () {
+test('title scope keeps local filtering and never hits the search endpoint', async function () {
   const originalFetch = globalThis.fetch
   let calls = 0
   anyGlobal.fetch = async function () { calls += 1; throw new Error('unexpected request') }
   try {
-    resetListState('requirements')
-    uiStore.set({
+    act(() => resetListState('requirements'))
+    act(() => uiStore.set({
       view: 'project', selectedProjectId: 'w1', selectedRequirement: null,
       activeTab: 'requirements',
-    })
-    setListState('requirements', { scope: 'title', search: 'sample' })
-    instances.clear()
+    }))
+    act(() => setListState('requirements', { scope: 'title', search: 'sample' }))
+    cleanup()
     const props = requirementListProps({ workspace: searchWorkspace })
-    const nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    const nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     assert.equal(dataRows(nodes).length, 1)
-    const instance = instances.get('root:')
-    const effectIndex = instance.hooks.findIndex(function (hook) {
-      return hook && typeof hook.fn === 'function' && Array.isArray(hook.deps) && hook.deps.length === 3
-    })
-    assert.equal(effectIndex >= 0, true)
-    assert.equal(instance.hooks[effectIndex].fn(), undefined)
-    const searchIndex = instance.hooks.findIndex(function (hook) {
-      return hook && hook.current && typeof hook.current.pending === 'function'
-    })
-    assert.equal(instance.hooks[searchIndex].current.pending(), false)
     assert.equal(calls, 0)
   } finally {
     anyGlobal.fetch = originalFetch
-    resetListState('requirements')
+    act(() => resetListState('requirements'))
   }
 })
-test('full scope renders seeded hits with snippets, hasMore and the status filter', function () {
+test('full scope renders seeded hits with snippets, hasMore and the status filter', async function () {
   try {
-    resetListState('requirements')
-    uiStore.set({
+    act(() => resetListState('requirements'))
+    act(() => uiStore.set({
       view: 'project', selectedProjectId: 'w1', selectedRequirement: null,
       activeTab: 'requirements',
-    })
-    setListState('requirements', { scope: 'full', search: 'needle' })
+    }))
+    act(() => setListState('requirements', { scope: 'full', search: 'needle' }))
     const props = requirementListProps({ workspace: searchWorkspace })
-    let nodes = renderRequirementsWithFullSearch(props, requirementFullSearchState({
+    let nodes = await renderRequirementsWithFullSearch(props, requirementFullSearchState({
       items: [bodySearchHit, titleSearchHit], hasMore: true, total: 12,
     }))
     let rows = dataRows(nodes)
@@ -688,25 +623,25 @@ test('full scope renders seeded hits with snippets, hasMore and the status filte
     assert.equal(text.indexOf('project.requirements.search.hasMore') >= 0, true)
     assert.equal(text.indexOf('project.requirements.search.loading') >= 0, false)
     // 状态筛选继续在全文结果上生效。
-    setListState('requirements', { status: 'new' })
-    nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    act(() => setListState('requirements', { status: 'new' }))
+    nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     rows = dataRows(nodes)
     assert.equal(rows.length, 1)
     assert.equal(textOf(rows[0], []).join(' ').indexOf('Sample') >= 0, true)
-    setListState('requirements', { status: 'all' })
+    act(() => setListState('requirements', { status: 'all' }))
     // 加载中 / 失败 / 空结果沿用既有空态与重试入口。
-    nodes = renderRequirementsWithFullSearch(props, requirementFullSearchState({ loading: true }))
+    nodes = await renderRequirementsWithFullSearch(props, requirementFullSearchState({ loading: true }))
     assert.equal(dataRows(nodes).length, 0)
     assert.equal(textOf(nodes, []).join(' ').indexOf('project.requirements.search.loading') >= 0, true)
-    nodes = renderRequirementsWithFullSearch(props, requirementFullSearchState({ error: 'search failed' }))
+    nodes = await renderRequirementsWithFullSearch(props, requirementFullSearchState({ error: 'search failed' }))
     text = textOf(nodes, []).join(' ')
     assert.equal(text.indexOf('search failed') >= 0, true)
     assert.equal(text.indexOf('project.requirements.search.retry') >= 0, true)
     assert.equal(dataRows(nodes).length, 0)
-    nodes = renderRequirementsWithFullSearch(props, requirementFullSearchState({ items: [] }))
+    nodes = await renderRequirementsWithFullSearch(props, requirementFullSearchState({ items: [] }))
     assert.equal(textOf(nodes, []).join(' ').indexOf('detail.list.emptyFilter') >= 0, true)
   } finally {
-    resetListState('requirements')
+    act(() => resetListState('requirements'))
   }
 })
 test('full scope retries a failed search on demand', async function () {
@@ -728,14 +663,14 @@ test('full scope retries a failed search on demand', async function () {
     }
   }
   try {
-    resetListState('requirements')
-    uiStore.set({
+    act(() => resetListState('requirements'))
+    act(() => uiStore.set({
       view: 'project', selectedProjectId: 'w1', selectedRequirement: null,
       activeTab: 'requirements',
-    })
-    setListState('requirements', { scope: 'full', search: 'needle' })
+    }))
+    act(() => setListState('requirements', { scope: 'full', search: 'needle' }))
     const props = requirementListProps({ workspace: searchWorkspace })
-    let nodes = renderRequirementsWithFullSearch(props, requirementFullSearchState({
+    let nodes = await renderRequirementsWithFullSearch(props, requirementFullSearchState({
       loading: false, error: 'search failed',
     }))
     const retry = findButton(nodes, 'project.requirements.search.retry')
@@ -747,12 +682,12 @@ test('full scope retries a failed search on demand', async function () {
     assert.equal(calls[0].url.indexOf('/requirement/search?') > 0, true)
     assert.equal(calls[0].url.indexOf('q=needle') > 0, true)
     assert.equal(calls[0].url.indexOf('scope=full') > 0, true)
-    nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     assert.equal(dataRows(nodes).length, 1)
     assert.equal(textOf(nodes, []).join(' ').indexOf(bodySearchHit.match.snippet) >= 0, true)
   } finally {
     anyGlobal.fetch = originalFetch
-    resetListState('requirements')
+    act(() => resetListState('requirements'))
   }
 })
 test('full scope debounces the persisted query and searches again on mount', async function (t) {
@@ -780,32 +715,22 @@ test('full scope debounces the persisted query and searches again on mount', asy
     }
   }
   try {
-    resetListState('requirements')
-    uiStore.set({
+    act(() => resetListState('requirements'))
+    act(() => uiStore.set({
       view: 'project', selectedProjectId: 'w1', selectedRequirement: null,
       activeTab: 'requirements',
-    })
+    }))
     // 持久化的范围与关键词来自 uiStore：离开再返回时自动重新检索。
-    setListState('requirements', { scope: 'full', search: '  needle  ' })
-    instances.clear()
+    act(() => setListState('requirements', { scope: 'full', search: '  needle  ' }))
+    cleanup()
     const props = requirementListProps({ workspace: searchWorkspace, t: trackingT })
-    let nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    let nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     assert.equal(textOf(nodes, []).join(' ').indexOf('project.requirements.search.loading') >= 0, true)
     assert.equal(calls.length, 0)
-    const instance = instances.get('root:')
-    const effectIndex = instance.hooks.findIndex(function (hook) {
-      return hook && typeof hook.fn === 'function' && Array.isArray(hook.deps) && hook.deps.length === 3
-    })
-    const searchIndex = instance.hooks.findIndex(function (hook) {
-      return hook && hook.current && typeof hook.current.pending === 'function'
-    })
-    const cleanup = instance.hooks[effectIndex].fn()
-    assert.equal(typeof cleanup, 'function')
-    assert.equal(instance.hooks[searchIndex].current.pending(), true)
-    t.mock.timers.tick(249)
+    act(() => t.mock.timers.tick(249))
     await flushMicrotasks()
     assert.equal(calls.length, 0)
-    t.mock.timers.tick(1)
+    act(() => t.mock.timers.tick(1))
     await flushMicrotasks()
     assert.equal(calls.length, 1)
     assert.equal(calls[0].method, 'GET')
@@ -813,7 +738,7 @@ test('full scope debounces the persisted query and searches again on mount', asy
     assert.equal(calls[0].url.indexOf('workspaceId=w1') > 0, true)
     assert.equal(calls[0].url.indexOf('q=needle') > 0, true)
     assert.equal(calls[0].url.indexOf('scope=full') > 0, true)
-    nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     assert.equal(dataRows(nodes).length, 1)
     assert.equal(textOf(nodes, []).join(' ').indexOf('project.requirements.search.loading') >= 0, false)
     assert.equal(labels.some(function (item) {
@@ -823,7 +748,7 @@ test('full scope debounces the persisted query and searches again on mount', asy
   } finally {
     anyGlobal.fetch = originalFetch
     t.mock.timers.reset()
-    resetListState('requirements')
+    act(() => resetListState('requirements'))
   }
 })
 test('full-text search controller debounces, drops stale responses and cancels', async function () {
@@ -846,7 +771,7 @@ test('full-text search controller debounces, drops stale responses and cancels',
   assert.equal(controller.pending(), false)
   controller.schedule('w1', 'needle ')
   assert.deepEqual(timers.delays(), [250])
-  timers.run()
+  act(() => timers.run())
   assert.equal(controller.pending(), false)
   await flushMicrotasks()
   assert.deepEqual(requests.map(function (item) { return item.query }), ['needle'])
@@ -868,7 +793,7 @@ test('full-text search controller debounces, drops stale responses and cancels',
   assert.equal(controller.pending(), true)
   controller.cancel()
   assert.equal(controller.pending(), false)
-  timers.run()
+  act(() => timers.run())
   await flushMicrotasks()
   assert.equal(requests.length, 3)
   const cancelledPromise = controller.run('w1', 'cancelled')
@@ -880,7 +805,7 @@ test('full-text search controller debounces, drops stale responses and cancels',
   successes = events.filter(function (event) { return event.type === 'success' })
   assert.equal(successes.length, 1)
 })
-test('requirement title filter and search result merge keep ids and hit order', function () {
+test('requirement title filter and search result merge keep ids and hit order', async function () {
   assert.equal(titleMatches({ id: 'REQ-1', title: 'Sample' }, 'sam'), true)
   assert.equal(titleMatches({ id: 'REQ-1', title: 'Sample' }, 'req-1'), true)
   assert.equal(titleMatches({ id: 'REQ-1', title: 'Sample' }, 'body'), false)
@@ -918,16 +843,13 @@ const weeklyData = {
   counts: { projects: 1, commits: 2, reviews: 1, tasks: 3, requirementsCreated: 1, requirementsUpdated: 1, runningRequirements: 1 },
   projects: [],
 }
-function seedHomeInstance(overrides) {
-  instances.clear()
-  const instance = { hooks: [] }
-  instance.hooks[0] = { value: overrides.dashboard || { loading: false, error: '', data: null } }
-  instance.hooks[1] = { value: overrides.weekly || { loading: false, error: '', data: null } }
-  instance.hooks[2] = { value: { current: 0 } }
-  instance.hooks[3] = { value: { current: 0 } }
-  instance.hooks[4] = { value: { current: false } }
-  instances.set('root:', instance)
-  return instance
+function mockHome(overrides): void {
+  cleanup()
+  respondOnce('/dashboard', overrides.dashboard?.data || null, overrides.dashboard?.error)
+  if (overrides.weekly?.data) {
+    respondOnce('/weekly-report', overrides.weekly.data)
+    afterRender = async () => { await findButton(currentNodes(), 'home.weekly.generate').props.onClick() }
+  }
 }
 function homeProps() {
   return {
@@ -935,12 +857,12 @@ function homeProps() {
     onOpenSettings: noop, showToast: noop, useSessions: fakeUseSessions,
   }
 }
-function renderHome(overrides) {
-  seedHomeInstance(overrides)
-  return render({ type: HomeView, props: homeProps(), children: [] })
+async function renderHome(overrides) {
+  mockHome(overrides)
+  return await render({ type: HomeView, props: homeProps(), children: [] })
 }
-test('home view renders stats, task panels and generated weekly report', function () {
-  const nodes = renderHome({
+test('home view renders stats, task panels and generated weekly report', async function () {
+  const nodes = await renderHome({
     dashboard: { loading: false, error: '', data: dashboardData },
     weekly: { loading: false, error: '', data: weeklyData },
   })
@@ -971,8 +893,8 @@ test('home view renders stats, task panels and generated weekly report', functio
     return node.props && node.props.className === 'devbench-data-meta'
   }), false)
 })
-test('home task rows stay single line and truncate long messages', function () {
-  instances.clear()
+test('home task rows stay single line and truncate long messages', async function () {
+  cleanup()
   const task = Object.assign({}, taskData, {
     id: 't-long', status: 'failed', kind: 'review',
     proposedMessage: 'fix(home): 第一行摘要\n\n- 第二行详情不应出现在紧凑行里',
@@ -980,7 +902,7 @@ test('home task rows stay single line and truncate long messages', function () {
     commitSubject: 'fix(home): 提交主题',
     sessionId: '',
   })
-  const nodes = render({ type: HomeTaskRow, props: { t: t, task: task }, children: [] })
+  const nodes = await render({ type: HomeTaskRow, props: { t: t, task: task }, children: [] })
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('fix(home): 第一行摘要') >= 0, true)
   assert.equal(text.indexOf('第二行详情') >= 0, false)
@@ -1000,8 +922,8 @@ test('home task rows stay single line and truncate long messages', function () {
   assert.equal(subject.props.title.indexOf('fix(home): 第一行摘要') === 0, true)
   assert.equal(subject.children[0], 'fix(home): 第一行摘要')
 
-  instances.clear()
-  const running = render({
+  cleanup()
+  const running = await render({
     type: HomeRunningRow,
     props: {
       t: t,
@@ -1019,7 +941,7 @@ test('home task rows stay single line and truncate long messages', function () {
   }), true)
 })
 
-test('requirement tasks render their requirement meta in both task surfaces', function () {
+test('requirement tasks render their requirement meta in both task surfaces', async function () {
   const requirementTask = {
     id: 'REQ-SESSION:session-1', kind: 'requirement', status: 'running',
     title: '修复会话错误', requirementId: 'REQ-20261026-006',
@@ -1027,8 +949,8 @@ test('requirement tasks render their requirement meta in both task surfaces', fu
     sessionId: 'session-1', error: '', createdAt: '2026-01-02T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
   }
-  instances.clear()
-  const nodes = render({
+  cleanup()
+  const nodes = await render({
     type: ProjectTasks,
     props: {
       t: t, tasks: [requirementTask], busyKey: '',
@@ -1048,8 +970,8 @@ test('requirement tasks render their requirement meta in both task surfaces', fu
   assert.equal(open.length, 1)
   assert.equal(open[0].props.disabled, false)
 
-  instances.clear()
-  const rowNodes = render({
+  cleanup()
+  const rowNodes = await render({
     type: HomeTaskRow,
     props: {
       t: t, task: requirementTask, index: 0, onOpenSession: noop, onOpenProject: noop,
@@ -1066,13 +988,13 @@ test('requirement tasks render their requirement meta in both task surfaces', fu
   }), true)
 })
 
-test('project tasks label uncommitted reviews and expose the review target row', function () {
+test('project tasks label uncommitted reviews and expose the review target row', async function () {
   const uncommittedTask = Object.assign({}, uncommittedReviewTaskData, {
     commitShort: 'deadbee', commitHash: 'deadbeefdeadbeef',
   })
-  setSelection('tasks', uncommittedTask.id)
-  instances.clear()
-  const nodes = render({
+  act(() => setSelection('tasks', uncommittedTask.id))
+  cleanup()
+  const nodes = await render({
     type: ProjectTasks,
     props: {
       t: t, tasks: [uncommittedTask], busyKey: '',
@@ -1092,14 +1014,14 @@ test('project tasks label uncommitted reviews and expose the review target row',
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('tabs.tasks.field.target') >= 0, true)
   assert.equal(text.indexOf('project.review.uncommittedTarget') >= 0, true)
-  setSelection('tasks', '')
-  instances.clear()
+  act(() => setSelection('tasks', ''))
+  cleanup()
 })
-test('home task rows only navigate to sessions that still exist', function () {
+test('home task rows only navigate to sessions that still exist', async function () {
   const opened = []
   function openSession(sessionId) { opened.push(sessionId) }
-  instances.clear()
-  const nodes = render({
+  cleanup()
+  const nodes = await render({
     type: HomeTaskRow,
     props: {
       t: t, task: taskData, index: 0, onOpenSession: openSession, onOpenProject: noop,
@@ -1125,9 +1047,9 @@ test('home task rows only navigate to sessions that still exist', function () {
   assert.deepEqual(opened, ['s1', 's1', 's1'])
 
   // A task whose session is gone renders no row click and no open button.
-  instances.clear()
+  cleanup()
   const missingTask = Object.assign({}, taskData, { id: 't-gone', sessionId: 'session-missing' })
-  const missing = render({
+  const missing = await render({
     type: HomeTaskRow,
     props: {
       t: t, task: missingTask, index: 0, onOpenSession: openSession, onOpenProject: noop,
@@ -1147,8 +1069,8 @@ test('home task rows only navigate to sessions that still exist', function () {
   assert.equal(opened.length, 3)
 
   // While the session list is still pending the id cannot be verified: no navigation.
-  instances.clear()
-  const pending = render({
+  cleanup()
+  const pending = await render({
     type: HomeTaskRow,
     props: {
       t: t, task: taskData, index: 0, onOpenSession: openSession, onOpenProject: noop,
@@ -1163,14 +1085,14 @@ test('home task rows only navigate to sessions that still exist', function () {
   assert.equal(opened.length, 3)
 })
 
-test('home task row falls back to the uncommitted target when no commit subject exists', function () {
-  instances.clear()
+test('home task row falls back to the uncommitted target when no commit subject exists', async function () {
+  cleanup()
   const task = Object.assign({}, taskData, {
     id: 'home-uncommitted', kind: 'review', status: 'running',
     reviewTarget: 'uncommitted', commitSubject: null, proposedMessage: null,
     commitShort: 'feedbee', commitHash: '', sessionId: '',
   })
-  let nodes = render({
+  let nodes = await render({
     type: HomeTaskRow,
     props: { t: t, task: task, index: 0, useSessions: fakeUseSessions },
     children: [],
@@ -1189,8 +1111,8 @@ test('home task row falls back to the uncommitted target when no commit subject 
   assert.equal(subject.children[0], 'project.review.uncommittedTarget')
 
   // A commit subject, when present, keeps priority over the fallback label.
-  instances.clear()
-  nodes = render({
+  cleanup()
+  nodes = await render({
     type: HomeTaskRow,
     props: {
       t: t, task: Object.assign({}, task, { id: 'home-uncommitted-2', commitSubject: 'fix: sample' }),
@@ -1201,9 +1123,9 @@ test('home task row falls back to the uncommitted target when no commit subject 
   text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('fix: sample') >= 0, true)
   assert.equal(text.indexOf('project.review.uncommittedTarget') >= 0, false)
-  instances.clear()
+  cleanup()
 })
-test('home recent tasks include requirement execution tasks from the dashboard', function () {
+test('home recent tasks include requirement execution tasks from the dashboard', async function () {
   const requirementTask = {
     id: 'TASK-REQ-1', kind: 'requirement', status: 'running',
     title: '修复需求', requirementId: 'REQ-1', workspaceId: 'w1',
@@ -1213,7 +1135,7 @@ test('home recent tasks include requirement execution tasks from the dashboard',
   const data = Object.assign({}, dashboardData, {
     recentTasks: [requirementTask].concat(dashboardData.recentTasks as any[]),
   })
-  const nodes = renderHome({ dashboard: { loading: false, error: '', data: data } })
+  const nodes = await renderHome({ dashboard: { loading: false, error: '', data: data } })
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('task.kind.requirement') >= 0, true)
   assert.equal(text.indexOf('REQ-1') >= 0, true)
@@ -1224,10 +1146,10 @@ test('home recent tasks include requirement execution tasks from the dashboard',
   assert.equal(Boolean(row), true)
 })
 
-test('project overview integrates AI actions, running tasks and recent reviews', function () {
-  instances.clear()
+test('project overview integrates AI actions, running tasks and recent reviews', async function () {
+  cleanup()
   const calls = { commit: 0, review: 0, uncommitted: 0, opened: [], cancelled: [] }
-  const nodes = render({
+  const nodes = await render({
     type: ProjectOverview,
     props: {
       t: t,
@@ -1311,11 +1233,11 @@ const uncommittedReviewTaskData = {
   reviewTarget: 'uncommitted', commitHash: '', commitShort: null, commitSubject: null,
   changedFiles: ['a.js'], createdAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z',
 }
-test('project overview adds the uncommitted review action after the latest-commit review', function () {
+test('project overview adds the uncommitted review action after the latest-commit review', async function () {
   let clicked = 0
-  function renderOverview(overrides) {
-    instances.clear()
-    return render({
+  async function renderOverview(overrides) {
+    cleanup()
+    return await render({
       type: ProjectOverview,
       props: Object.assign({
         t: tWithParams,
@@ -1336,7 +1258,7 @@ test('project overview adds the uncommitted review action after the latest-commi
       return textOf(node, []).join(' ').indexOf('project.ai.reviewUncommitted') === 0
     })
   }
-  let nodes = renderOverview({})
+  let nodes = await renderOverview({})
   // The AI actions keep their fixed order: commit, review latest commit, review uncommitted.
   const actions = nodes.find(function (node) {
     return node.props && node.props.className === 'devbench-overview-ai-actions'
@@ -1353,13 +1275,13 @@ test('project overview adds the uncommitted review action after the latest-commi
   assert.equal(clicked, 1)
 
   // While the request is in flight the label reflects the busy state.
-  nodes = renderOverview({ canReviewUncommitted: false, reviewUncommittedBusy: true })
+  nodes = await renderOverview({ canReviewUncommitted: false, reviewUncommittedBusy: true })
   button = uncommittedButtonOf(nodes)
   assert.equal(textOf(button, []).join(' '), 'project.ai.reviewUncommittedBusy')
   assert.equal(button.props.disabled, true)
 
   // A running uncommitted review task wins over the busy label.
-  nodes = renderOverview({
+  nodes = await renderOverview({
     canReviewUncommitted: false,
     reviewUncommittedBusy: true,
     activeUncommittedReviewTask: uncommittedReviewTaskData,
@@ -1372,7 +1294,7 @@ test('project overview adds the uncommitted review action after the latest-commi
   const cleanOverview = Object.assign({}, overviewData, {
     git: Object.assign({}, overviewData.git, { changes: [] }),
   })
-  nodes = renderOverview({
+  nodes = await renderOverview({
     overview: { loading: false, error: '', data: cleanOverview },
     canReviewUncommitted: false,
   })
@@ -1380,61 +1302,54 @@ test('project overview adds the uncommitted review action after the latest-commi
   assert.equal(button.props.disabled, true)
   assert.equal(button.props.title, 'project.ai.clean')
 })
-test('workbench only enables the uncommitted review when the working tree has changes', function () {
-  uiStore.set({
+test('workbench only enables the uncommitted review when the working tree has changes', async function () {
+  act(() => uiStore.set({
     view: 'project', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'overview',
-  })
-  instances.clear()
-  let instance = seedDevbenchInstance()
-  instance.hooks[2] = {
-    value: {
-      loading: false, error: '', key: 'w1',
-      data: Object.assign({}, overviewData, {
-        git: Object.assign({}, overviewData.git, { changes: [] }),
-      }),
-    },
-  }
-  let nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  }))
+  cleanup()
+  mockDevbench({ overview: { ...overviewData, git: { ...overviewData.git, changes: [] } } })
+  let nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
   let button = findButton(nodes, 'project.ai.reviewUncommitted')
   assert.equal(Boolean(button), true)
   assert.equal(button.props.disabled, true)
 
   // A dirty working tree enables the action; no active uncommitted review exists yet.
-  instances.clear()
-  seedDevbenchInstance()
-  nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  cleanup()
+  mockDevbench()
+  nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
   button = findButton(nodes, 'project.ai.reviewUncommitted')
   assert.equal(Boolean(button), true)
   assert.equal(button.props.disabled, false)
 
   // A running uncommitted review task keeps the action disabled and explains why.
-  instances.clear()
-  instance = seedDevbenchInstance()
-  instance.hooks[3] = {
-    value: {
-      loading: false, error: '', key: 'w1',
-      data: [taskData, uncommittedReviewTaskData],
-    },
-  }
-  nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  cleanup()
+  mockDevbench({ tasks: [taskData, uncommittedReviewTaskData] })
+  nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
   button = findButton(nodes, 'project.ai.reviewUncommittedActive')
   assert.equal(Boolean(button), true)
   assert.equal(button.props.disabled, true)
   assert.equal(textOf(button, []).join(' '), 'project.ai.reviewUncommittedActive')
 
   // While the start request is in flight the workbench reports the busy label.
-  instances.clear()
-  instance = seedDevbenchInstance()
-  instance.hooks[34] = { value: 'w1' }
-  nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  cleanup()
+  mockDevbench()
+  const previousFetch = globalThis.fetch
+  let finishReview
+  globalThis.fetch = (url, init) => String(url).includes('/project/review/uncommitted')
+    ? new Promise<Response>(resolve => { finishReview = resolve }) : previousFetch(url, init)
+  nodes = await render({ type: RequirementsPage, props: { t, useSessions: undefined }, children: [] })
+  findButton(nodes, 'project.ai.reviewUncommitted').props.onClick()
+  nodes = await render({ type: RequirementsPage, props: { t, useSessions: undefined }, children: [] })
   button = findButton(nodes, 'project.ai.reviewUncommittedBusy')
   assert.equal(Boolean(button), true)
   assert.equal(button.props.disabled, true)
   assert.equal(textOf(button, []).join(' '), 'project.ai.reviewUncommittedBusy')
+  finishReview(reply({ task: uncommittedReviewTaskData }))
+  await flushAsyncWork()
 })
-test('sidebar workbench icon is a panel layout instead of the requirements clipboard', function () {
-  instances.clear()
-  const nodes = render({ type: DevbenchIcon, props: {}, children: [] })
+test('sidebar workbench icon is a panel layout instead of the requirements clipboard', async function () {
+  cleanup()
+  const nodes = await render({ type: DevbenchIcon, props: {}, children: [] })
   const svg = nodes.find(function (node) { return node.type === 'svg' })
   assert.equal(Boolean(svg), true)
   assert.equal(svg.props.viewBox, '0 0 24 24')
@@ -1469,26 +1384,26 @@ test('workbench starts an uncommitted review once and merges the returned task',
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    uiStore.set({
+    act(() => uiStore.set({
       view: 'project', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'overview',
-    })
-    instances.clear()
-    seedDevbenchInstance()
-    let nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+    }))
+    cleanup()
+    mockDevbench()
+    let nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
     const button = findButton(nodes, 'project.ai.reviewUncommitted')
     assert.equal(Boolean(button), true)
     assert.equal(button.props.disabled, false)
     // A double click while the request is in flight must not start a second task.
     button.props.onClick()
     button.props.onClick()
-    await new Promise(function (resolve) { setTimeout(resolve, 0) })
+    await flushAsyncWork()
     const posts = calls.filter(function (call) {
       return call.url.indexOf('/project/review/uncommitted') > 0
     })
     assert.equal(posts.length, 1)
     assert.equal(posts[0].method, 'POST')
     assert.deepEqual(posts[0].body, { workspaceId: 'w1' })
-    nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+    nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
     // Success toast and the refreshed task state both surface in the workbench.
     assert.equal(textOf(nodes, []).join(' ').indexOf('project.review.uncommittedStarted') >= 0, true)
     const activeButton = findButton(nodes, 'project.ai.reviewUncommittedActive')
@@ -1498,13 +1413,13 @@ test('workbench starts an uncommitted review once and merges the returned task',
     anyGlobal.fetch = originalFetch
   }
 })
-test('project overview labels uncommitted reviews with the target instead of an empty commit', function () {
-  instances.clear()
+test('project overview labels uncommitted reviews with the target instead of an empty commit', async function () {
+  cleanup()
   const uncommittedReview = Object.assign({}, reviewData, {
     name: '20260102-uncommitted-review.md', commit: '', commitSubject: '', target: 'uncommitted',
   })
   const data = Object.assign({}, overviewData, { reviews: [uncommittedReview] })
-  const nodes = render({
+  const nodes = await render({
     type: ProjectOverview,
     props: {
       t: t,
@@ -1530,9 +1445,9 @@ test('project overview labels uncommitted reviews with the target instead of an 
   }).map(function (node) { return textOf(node, []).join(' ') })
   assert.equal(statValues.indexOf('project.review.uncommittedTarget') >= 0, true)
 })
-test('requirements clipboard icon is kept for the conversation header action', function () {
-  instances.clear()
-  const nodes = render({ type: IconReq, props: { size: 14 }, children: [] })
+test('requirements clipboard icon is kept for the conversation header action', async function () {
+  cleanup()
+  const nodes = await render({ type: IconReq, props: { size: 14 }, children: [] })
   const svg = nodes.find(function (node) { return node.type === 'svg' })
   assert.equal(svg.props.width, 14)
   const paths = nodes.filter(function (node) { return node.type === 'path' }).map(function (node) {
@@ -1541,15 +1456,15 @@ test('requirements clipboard icon is kept for the conversation header action', f
   assert.equal(paths.some(function (value) { return String(value).indexOf('M8.8 11.6') >= 0 }), true)
 })
 
-test('home view tolerates empty dashboard data', function () {
-  const nodes = renderHome({})
+test('home view tolerates empty dashboard data', async function () {
+  const nodes = await renderHome({})
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('home.weekly') >= 0, true)
   assert.equal(text.indexOf('home.weekly.generate') >= 0, true)
   assert.equal(text.indexOf('home.noRecentTasks') >= 0, false)
 })
 
-test('commit list renders load-more for a full first page', function () {
+test('commit list renders load-more for a full first page', async function () {
   const commits = []
   for (let index = 0; index < 10; index += 1) {
     commits.push(Object.assign({}, commitData, {
@@ -1558,8 +1473,8 @@ test('commit list renders load-more for a full first page', function () {
       subject: 'commit ' + index,
     }))
   }
-  instances.clear()
-  const nodes = render({
+  cleanup()
+  const nodes = await render({
     type: ProjectCommits,
     props: { t: t, commits: commits, tasks: [], workspaceId: 'w1', reviewingCommit: '', onReview: noop },
     children: [],
@@ -1570,7 +1485,7 @@ test('commit list renders load-more for a full first page', function () {
   assert.equal(Boolean(loadMore), true)
 })
 
-test('commit detail renders changed files, diffs, linked requirements and session actions', function () {
+test('commit detail renders changed files, diffs, linked requirements and session actions', async function () {
   const detail = {
     commit: Object.assign({}, commitData, {
       message: 'feat: sample\n\nDetailed commit body\nsecond line',
@@ -1594,18 +1509,11 @@ test('commit detail renders changed files, diffs, linked requirements and sessio
     id: 't-review', kind: 'review', status: 'succeeded', workspaceId: 'w1',
     commitHash: commitData.hash, commitShort: commitData.short, sessionId: 's1',
   }
-  setSelection('commits', commitData.hash)
-  instances.clear()
-  const instance = { hooks: [] }
-  instance.hooks[0] = { value: { rows: [commitData], hasMore: false, loadingMore: false, refreshing: false, error: '' } }
-  instance.hooks[1] = { value: '' }
-  instance.hooks[2] = { value: 'all' }
-  instance.hooks[3] = { value: { loading: false, error: '', data: detail, hash: commitData.hash } }
-  instance.hooks[4] = { value: null }
-  instance.hooks[5] = { value: '' }
-  instances.set('root:', instance)
+  act(() => setSelection('commits', commitData.hash))
+  cleanup()
+  respondOnce('/project/commit/detail', detail)
   const opened = []
-  const nodes = render({
+  const nodes = await render({
     type: ProjectCommits,
     props: {
       t: t, commits: [commitData], tasks: [reviewTask], workspaceId: 'w1',
@@ -1655,7 +1563,7 @@ test('commit detail renders changed files, diffs, linked requirements and sessio
   }), false)
 })
 
-test('commit file tree groups paths and aggregates directory stats', function () {
+test('commit file tree groups paths and aggregates directory stats', async function () {
   const tree = buildCommitFileTree([
     { path: 'src/a.js', status: 'M', additions: 3, deletions: 1 },
     { path: 'src/lib/b.js', status: 'A', additions: 5, deletions: 0 },
@@ -1673,8 +1581,8 @@ test('commit file tree groups paths and aggregates directory stats', function ()
   assert.equal(tree[1].path, 'README.md')
 })
 
-test('commit diff browser switches the right pane from the file tree', function () {
-  instances.clear()
+test('commit diff browser switches the right pane from the file tree', async function () {
+  cleanup()
   const files = [
     {
       path: 'src/a.js', oldPath: '', status: 'M', additions: 3, deletions: 1,
@@ -1685,7 +1593,7 @@ test('commit diff browser switches the right pane from the file tree', function 
       binary: true, truncated: false, diff: '',
     },
   ]
-  let nodes = render({ type: CommitDiffBrowser, props: { t: t, files: files }, children: [] })
+  let nodes = await render({ type: CommitDiffBrowser, props: { t: t, files: files }, children: [] })
   const browser = nodes.find(function (node) {
     return node.props && node.props.className === 'devbench-commit-browser'
   })
@@ -1702,7 +1610,7 @@ test('commit diff browser switches the right pane from the file tree', function 
   assert.equal(fileRows.length, 2)
   // Picking the second tree row swaps the right pane to that file.
   fileRows[1].props.onClick()
-  nodes = render({ type: CommitDiffBrowser, props: { t: t, files: files }, children: [] })
+  nodes = await render({ type: CommitDiffBrowser, props: { t: t, files: files }, children: [] })
   assert.equal(nodes.some(function (node) {
     return node.props && node.props.className === 'devbench-commit-diff'
   }), false)
@@ -1712,9 +1620,9 @@ test('commit diff browser switches the right pane from the file tree', function 
   assert.equal(textOf(nodes, []).join(' ').indexOf('tabs.commits.binaryFile') >= 0, true)
 })
 
-test('commit diff browser skips the tree for a single changed file', function () {
-  instances.clear()
-  const nodes = render({
+test('commit diff browser skips the tree for a single changed file', async function () {
+  cleanup()
+  const nodes = await render({
     type: CommitDiffBrowser,
     props: {
       t: t,
@@ -1735,10 +1643,10 @@ test('commit diff browser skips the tree for a single changed file', function ()
   assert.equal(String(diff.children[0]).indexOf('+only line') >= 0, true)
 })
 
-test('requirement detail lists linked commits and removes the Git history tab', function () {
+test('requirement detail lists linked commits and removes the Git history tab', async function () {
   const commitHash = 'a'.repeat(40)
-  setSelection('commits', '')
-  instances.clear()
+  act(() => setSelection('commits', ''))
+  cleanup()
   const linkedSummary = Object.assign({}, summary, { commits: [commitHash] })
   const linkedDetail = Object.assign({}, detailData, {
     requirement: linkedSummary,
@@ -1746,7 +1654,7 @@ test('requirement detail lists linked commits and removes the Git history tab', 
     gitLog: undefined,
   })
   const opened = []
-  const nodes = render({
+  const nodes = await render({
     type: DetailView,
     props: {
       t: t, selected: { workspaceId: 'w1', id: 'REQ-1' }, summary: linkedSummary,
@@ -1761,7 +1669,8 @@ test('requirement detail lists linked commits and removes the Git history tab', 
   })
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('detail.commits') >= 0, true)
-  assert.equal(text.indexOf('aaaaaaaa') >= 0, true)
+  assert.equal(text.includes(commitData.short), true)
+  assert.equal(text.includes(commitData.subject), true)
   assert.equal(text.indexOf('detail.git') >= 0, false)
   const openButton = nodes.find(function (node) {
     return node.type === 'button' && node.props && node.props.title === 'detail.commits.open'
@@ -1774,10 +1683,10 @@ test('requirement detail lists linked commits and removes the Git history tab', 
   }), true)
 })
 
-test('task detail puts the open-session action in the right pane rather than the footer', function () {
-  setSelection('tasks', taskData.id)
-  instances.clear()
-  const nodes = render({
+test('task detail puts the open-session action in the right pane rather than the footer', async function () {
+  act(() => setSelection('tasks', taskData.id))
+  cleanup()
+  const nodes = await render({
     type: ProjectTasks,
     props: {
       t: t, tasks: [taskData], busyKey: '',
@@ -1797,30 +1706,29 @@ test('task detail puts the open-session action in the right pane rather than the
   assert.equal(textOf(footer, []).join(' ').indexOf('project.task.openSession') >= 0, false)
 })
 
-test('project header exposes detected project launchers', function () {
-  setSelection('commits', '')
-  uiStore.set({
+test('project header exposes detected project launchers', async function () {
+  act(() => setSelection('commits', ''))
+  act(() => uiStore.set({
     view: 'project', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'overview',
-  })
-  instances.clear()
-  const instance = seedDevbenchInstance()
-  instance.hooks[15] = { value: ['vscode', 'system', 'iterm'] }
-  const nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  }))
+  cleanup()
+  mockDevbench({ openTargets: ['vscode', 'system', 'iterm'] })
+  const nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
   const titles = nodes.filter(function (node) {
     return node.type === 'button' && node.props && String(node.props.title || '').indexOf('project.open.') === 0
   }).map(function (node) { return node.props.title })
   assert.deepEqual(titles.sort(), ['project.open.iterm', 'project.open.system', 'project.open.vscode'])
 })
 
-test('requirement detail exposes worktree controls and settings expose templates', function () {
-  instances.clear()
+test('requirement detail exposes worktree controls and settings expose templates', async function () {
+  cleanup()
   const worktreeData = Object.assign({}, detailData, {
     worktree: {
       enabled: true, exists: true, path: '/tmp/worktrees/REQ-1',
       branch: 'devbench/REQ-1', base: 'main',
     },
   })
-  let nodes = render({
+  let nodes = await render({
     type: DetailView,
     props: {
       t: t, selected: { workspaceId: 'w1', id: 'REQ-1' }, summary: summary,
@@ -1837,7 +1745,7 @@ test('requirement detail exposes worktree controls and settings expose templates
   assert.equal(text.indexOf('/tmp/worktrees/REQ-1') >= 0, true)
   assert.equal(nodes.some(function (node) { return node.props && node.props.className === 'devbench-worktree-card' }), true)
 
-  instances.clear()
+  cleanup()
   const settingsData = Object.assign({}, stateData, {
     config: Object.assign({}, stateData.config, {
       reviewPromptTemplate: 'custom template {taskId}',
@@ -1848,7 +1756,7 @@ test('requirement detail exposes worktree controls and settings expose templates
       defaultWorktreeRoot: '/tmp/default-worktrees',
     }),
   })
-  nodes = render({ type: SettingsView, props: { t: t, data: settingsData, reload: function () { return Promise.resolve() }, showToast: noop }, children: [] })
+  nodes = await render({ type: SettingsView, props: { t: t, data: settingsData, reload: function () { return Promise.resolve() }, showToast: noop }, children: [] })
   text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('settings.reviewTemplate') >= 0, true)
   assert.equal(text.indexOf('settings.commitTemplate') >= 0, true)
@@ -1860,8 +1768,8 @@ test('requirement detail exposes worktree controls and settings expose templates
   assert.equal(promptTextareas.length, 3)
   assert.equal(promptTextareas[2].props.value, 'custom commit {taskId} {changedFiles} {diffText}')
 })
-test('settings rejects a commit prompt template without the required placeholders', function () {
-  instances.clear()
+test('settings rejects a commit prompt template without the required placeholders', async function () {
+  cleanup()
   const toasts = []
   const data = Object.assign({}, stateData, {
     config: Object.assign({}, stateData.config, {
@@ -1878,7 +1786,7 @@ test('settings rejects a commit prompt template without the required placeholder
     t: t, data: data, reload: function () { return Promise.resolve() },
     showToast: function (kind, text) { toasts.push({ kind: kind, text: text }) },
   }
-  const nodes = render({ type: SettingsView, props: props, children: [] })
+  const nodes = await render({ type: SettingsView, props: props, children: [] })
   const sections = nodes.filter(function (node) {
     return node.props && node.props.className === 'devbench-section'
   })
@@ -1901,9 +1809,9 @@ function findButton(nodes, label) {
     return node.type === 'button' && textOf(node, []).join(' ').indexOf(label) >= 0
   })
 }
-test('worktree tab lists worktrees with branch, path, commit and dirty state', function () {
-  seedWorktreesHooks()
-  const nodes = render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
+test('worktree tab lists worktrees with branch, path, commit and dirty state', async function () {
+  mockWorktrees()
+  const nodes = await render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('Sample requirement') >= 0, true)
   assert.equal(text.indexOf('REQ-1') >= 0, true)
@@ -1934,8 +1842,8 @@ test('worktree tab lists worktrees with branch, path, commit and dirty state', f
   assert.equal(remove.props.disabled, true)
   assert.equal(remove.props.title, 'tabs.worktrees.deleteDirtyReason')
 })
-test('worktree tab disables push without remote and commit without changes', function () {
-  seedWorktreesHooks({
+test('worktree tab disables push without remote and commit without changes', async function () {
+  mockWorktrees({
     list: {
       loading: false, error: '', key: 'w1',
       data: Object.assign({}, worktreesData, {
@@ -1944,13 +1852,13 @@ test('worktree tab disables push without remote and commit without changes', fun
       }),
     },
   })
-  let nodes = render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
+  let nodes = await render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
   let push = findButton(nodes, 'project.worktrees.push')
   assert.equal(push.props.disabled, true)
   assert.equal(push.props.title, 'project.worktrees.pushNoRemote')
   assert.equal(findButton(nodes, 'project.worktrees.commit').props.disabled, false)
 
-  seedWorktreesHooks({
+  mockWorktrees({
     list: {
       loading: false, error: '', key: 'w1',
       data: Object.assign({}, worktreesData, {
@@ -1958,13 +1866,13 @@ test('worktree tab disables push without remote and commit without changes', fun
       }),
     },
   })
-  nodes = render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
+  nodes = await render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
   const commit = findButton(nodes, 'project.worktrees.commit')
   assert.equal(commit.props.disabled, true)
   assert.equal(commit.props.title, 'project.worktrees.noChanges')
   assert.equal(textOf(nodes, []).join(' ').indexOf('project.worktrees.clean') >= 0, true)
 
-  seedWorktreesHooks({
+  mockWorktrees({
     list: {
       loading: false, error: '', key: 'w1',
       data: Object.assign({}, worktreesData, {
@@ -1972,38 +1880,38 @@ test('worktree tab disables push without remote and commit without changes', fun
       }),
     },
   })
-  nodes = render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
+  nodes = await render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
   // A deleted directory is recoverable through the cleanup action, not a dead end.
   assert.equal(textOf(nodes, []).join(' ').indexOf('project.worktrees.missingDir') >= 0, true)
   assert.equal(Boolean(findButton(nodes, 'project.worktrees.pruneSingle')), true)
   assert.equal(findButton(nodes, 'project.worktrees.remove'), undefined)
 })
-test('worktree tab renders empty, error and non-git states', function () {
-  seedWorktreesHooks({
+test('worktree tab renders empty, error and non-git states', async function () {
+  mockWorktrees({
     list: {
       loading: false, error: '', key: 'w1',
       data: Object.assign({}, worktreesData, { worktrees: [] }),
     },
   })
-  let nodes = render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
+  let nodes = await render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
   assert.equal(textOf(nodes, []).join(' ').indexOf('project.worktrees.emptyNoRequirement') >= 0, true)
   assert.equal(Boolean(findButton(nodes, 'project.worktrees.goEnable')), true)
 
-  seedWorktreesHooks({ list: { loading: false, error: 'worktree load failed', data: null, key: 'w1' } })
-  nodes = render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
+  mockWorktrees({ list: { loading: false, error: 'worktree load failed', data: null, key: 'w1' } })
+  nodes = await render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
   assert.equal(textOf(nodes, []).join(' ').indexOf('worktree load failed') >= 0, true)
   assert.equal(Boolean(findButton(nodes, 'panel.retry')), true)
 
-  instances.clear()
-  nodes = render({ type: ProjectWorktrees, props: worktreeProps({ gitReady: false }), children: [] })
+  cleanup()
+  nodes = await render({ type: ProjectWorktrees, props: worktreeProps({ gitReady: false }), children: [] })
   assert.equal(textOf(nodes, []).join(' ').indexOf('project.worktrees.notGit') >= 0, true)
 })
-test('worktree changes panel renders files, diff and truncation hint', function () {
-  seedWorktreesHooks({
+test('worktree changes panel renders files, diff and truncation hint', async function () {
+  mockWorktrees({
     expanded: 'REQ-1',
     changes: { loading: false, error: '', data: worktreeChangesData, key: 'REQ-1' },
   })
-  const nodes = render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
+  const nodes = await render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('src/a.js') >= 0, true)
   assert.equal(text.indexOf('src/b.js') >= 0, true)
@@ -2023,17 +1931,17 @@ test('worktree changes button fetches and renders the diff', async function () {
     return { status: 200, json: async function () { return { ok: true, value: worktreeChangesData } } }
   }
   try {
-    seedWorktreesHooks()
-    let nodes = render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
+    mockWorktrees()
+    let nodes = await render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
     const button = findButton(nodes, 'project.worktrees.changes')
     await button.props.onClick()
-    await new Promise(function (resolve) { setTimeout(resolve, 0) })
+    await flushAsyncWork()
     assert.equal(calls.length, 1)
     assert.equal(calls[0].method, 'GET')
     assert.equal(calls[0].url.indexOf('/project/worktree/changes?') > 0, true)
     assert.equal(calls[0].url.indexOf('workspaceId=w1') > 0, true)
     assert.equal(calls[0].url.indexOf('id=REQ-1') > 0, true)
-    nodes = render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
+    nodes = await render({ type: ProjectWorktrees, props: worktreeProps(), children: [] })
     assert.equal(textOf(nodes, []).join(' ').indexOf('diff --git a/src/a.js') >= 0, true)
   } finally {
     anyGlobal.fetch = originalFetch
@@ -2061,12 +1969,12 @@ test('worktree commit preview and push call the frozen endpoints', async functio
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    seedWorktreesHooks()
+    mockWorktrees()
     const props = worktreeProps({
       onCommitTask: function (task) { tasks.push(task) },
       showToast: function (kind, text) { toasts.push({ kind: kind, text: text }) },
     })
-    let nodes = render({ type: ProjectWorktrees, props: props, children: [] })
+    let nodes = await render({ type: ProjectWorktrees, props: props, children: [] })
     await findButton(nodes, 'project.worktrees.commit').props.onClick()
     assert.equal(tasks.length, 1)
     assert.equal(tasks[0].id, 'wt1')
@@ -2075,10 +1983,10 @@ test('worktree commit preview and push call the frozen endpoints', async functio
     })
     assert.equal(previewCall.method, 'POST')
     assert.deepEqual(previewCall.body, { workspaceId: 'w1', id: 'REQ-1' })
-    await new Promise(function (resolve) { setTimeout(resolve, 0) })
-    nodes = render({ type: ProjectWorktrees, props: props, children: [] })
+    await flushAsyncWork()
+    nodes = await render({ type: ProjectWorktrees, props: props, children: [] })
     const pushPromise = findButton(nodes, 'project.worktrees.push').props.onClick()
-    closeDialog(true)
+    act(() => closeDialog(true))
     await pushPromise
     const pushCall = calls.find(function (call) { return call.url.indexOf('/project/worktree/push') > 0 })
     assert.deepEqual(pushCall.body, { workspaceId: 'w1', id: 'REQ-1' })
@@ -2106,7 +2014,7 @@ test('worktree remove button opens a confirm modal and calls the remove endpoint
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    seedWorktreesHooks({
+    mockWorktrees({
       list: {
         loading: false, error: '', key: 'w1',
         data: Object.assign({}, worktreesData, {
@@ -2117,11 +2025,11 @@ test('worktree remove button opens a confirm modal and calls the remove endpoint
     const props = worktreeProps({
       showToast: function (kind, text) { toasts.push({ kind: kind, text: text }) },
     })
-    let nodes = render({ type: ProjectWorktrees, props: props, children: [] })
+    let nodes = await render({ type: ProjectWorktrees, props: props, children: [] })
     const open = findButton(nodes, 'project.worktrees.remove')
     assert.equal(open.props.disabled, false)
     const removePromise = open.props.onClick()
-    closeDialog(true)
+    act(() => closeDialog(true))
     await removePromise
     const removeCall = calls.find(function (call) {
       return call.url.indexOf('/project/worktree/remove') > 0
@@ -2132,7 +2040,7 @@ test('worktree remove button opens a confirm modal and calls the remove endpoint
     assert.equal(toasts.some(function (toast) {
       return toast.text === 'project.worktrees.removed'
     }), true)
-    await new Promise(function (resolve) { setTimeout(resolve, 0) })
+    await flushAsyncWork()
     assert.equal(findButton(nodes, 'action.delete'), undefined)
   } finally {
     anyGlobal.fetch = originalFetch
@@ -2163,16 +2071,17 @@ test('confirm commit routes worktree tasks to the worktree confirm endpoint', as
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    uiStore.set({
+    act(() => uiStore.set({
       view: 'project', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'worktrees',
-    })
-    instances.clear()
-    const instance = seedDevbenchInstance()
-    instance.hooks[3].value = { loading: false, error: '', data: [worktreeCommitTask], key: 'w1' }
-    instance.hooks[13].value = {
-      task: worktreeCommitTask, message: 'feat: worktree change', busy: false, cancelling: false, error: '',
-    }
-    let nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+    }))
+    cleanup()
+    mockDevbench({ tasks: [worktreeCommitTask] })
+    respondOnce('/project/worktrees', worktreesData)
+    let nodes = await render({ type: RequirementsPage, props: { t, useSessions: undefined }, children: [] })
+    await findButton(nodes, 'project.worktrees.viewPreview').props.onClick()
+    nodes = currentNodes()
+    await nodes.find(node => node.type === 'textarea').props.onChange({ target: { value: 'feat: worktree change' } })
+    nodes = currentNodes()
     const modalText = textOf(nodes, []).join(' ')
     assert.equal(modalText.indexOf('project.commit.confirm.worktreeHint') >= 0, true)
     assert.equal(modalText.indexOf(worktreeRowData.path) >= 0, true)
@@ -2185,7 +2094,7 @@ test('confirm commit routes worktree tasks to the worktree confirm endpoint', as
     assert.equal(Boolean(call), true)
     assert.deepEqual(call.body, { workspaceId: 'w1', taskId: 'wt1', message: 'feat: worktree change' })
     assert.equal(calls.some(function (item) { return item.url.indexOf('/project/commit/confirm') > 0 }), false)
-    nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+    nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
     assert.equal(textOf(nodes, []).join(' ').indexOf('project.worktrees.commitSuccess') >= 0, true)
   } finally {
     anyGlobal.fetch = originalFetch
@@ -2220,7 +2129,7 @@ test('worktree tab creates enabled-but-absent worktrees from the row', async fun
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    seedWorktreesHooks({
+    mockWorktrees({
       list: {
         loading: false, error: '', key: 'w1',
         data: Object.assign({}, worktreesData, { worktrees: [absentRow] }),
@@ -2231,7 +2140,7 @@ test('worktree tab creates enabled-but-absent worktrees from the row', async fun
       onChanged: function () { changed.push(true) },
       onGoRequirements: noop,
     })
-    const nodes = render({ type: ProjectWorktrees, props: props, children: [] })
+    const nodes = await render({ type: ProjectWorktrees, props: props, children: [] })
     const text = textOf(nodes, []).join(' ')
     assert.equal(text.indexOf('project.worktrees.notCreated') >= 0, true)
     assert.equal(text.indexOf('project.worktrees.absentHint') >= 0, true)
@@ -2270,7 +2179,7 @@ test('worktree tab cleans missing worktree registrations', async function () {
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    seedWorktreesHooks({
+    mockWorktrees({
       list: {
         loading: false, error: '', key: 'w1',
         data: Object.assign({}, worktreesData, { worktrees: [missingRow] }),
@@ -2280,11 +2189,11 @@ test('worktree tab cleans missing worktree registrations', async function () {
       showToast: function (kind, text) { toasts.push({ kind: kind, text: text }) },
       onChanged: noop,
     })
-    const nodes = render({ type: ProjectWorktrees, props: props, children: [] })
+    const nodes = await render({ type: ProjectWorktrees, props: props, children: [] })
     const prune = findButton(nodes, 'project.worktrees.pruneSingle')
     assert.equal(Boolean(prune), true)
     const promise = prune.props.onClick()
-    closeDialog(true)
+    act(() => closeDialog(true))
     await promise
     const call = calls.find(function (item) {
       return item.url.indexOf('/project/worktree/prune') > 0
@@ -2310,7 +2219,7 @@ test('worktree quick actions open the requirement and external launchers', async
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    seedWorktreesHooks()
+    mockWorktrees()
     const props = worktreeProps({
       openTargets: ['vscode', 'system'],
       onOpenRequirement: function (workspaceId, requirementId) {
@@ -2318,7 +2227,7 @@ test('worktree quick actions open the requirement and external launchers', async
       },
       showToast: noop,
     })
-    let nodes = render({ type: ProjectWorktrees, props: props, children: [] })
+    let nodes = await render({ type: ProjectWorktrees, props: props, children: [] })
     const launcher = nodes.find(function (node) {
       return node.type === 'button' && node.props && node.props.title === 'project.worktrees.openIn'
     })
@@ -2330,7 +2239,7 @@ test('worktree quick actions open the requirement and external launchers', async
     assert.equal(Boolean(revealCall), true)
     assert.deepEqual(revealCall.body, { workspaceId: 'w1', id: 'REQ-1', target: 'vscode' })
 
-    nodes = render({ type: ProjectWorktrees, props: props, children: [] })
+    nodes = await render({ type: ProjectWorktrees, props: props, children: [] })
     const openRequirement = findButton(nodes, 'project.worktrees.openRequirement')
     assert.equal(Boolean(openRequirement), true)
     openRequirement.props.onClick()
@@ -2351,7 +2260,7 @@ test('stale worktree preview errors offer a re-preview action', async function (
     }
   }
   try {
-    seedWorktreesHooks({
+    mockWorktrees({
       list: {
         loading: false, error: '', key: 'w1',
         data: Object.assign({}, worktreesData, {
@@ -2364,7 +2273,7 @@ test('stale worktree preview errors offer a re-preview action', async function (
         toasts.push({ kind: kind, text: text, options: options || {} })
       },
     })
-    const nodes = render({ type: ProjectWorktrees, props: props, children: [] })
+    const nodes = await render({ type: ProjectWorktrees, props: props, children: [] })
     await findButton(nodes, 'project.worktrees.commit').props.onClick()
     const stale = toasts.find(function (toast) {
       return toast.text === '提交预览已过期'
@@ -2376,7 +2285,7 @@ test('stale worktree preview errors offer a re-preview action', async function (
     anyGlobal.fetch = originalFetch
   }
 })
-test('sidebar click on the selected project leaves home for the project overview', function () {
+test('sidebar click on the selected project leaves home for the project overview', async function () {
   const originalFetch = globalThis.fetch
   anyGlobal.fetch = async function (url) {
     const target = String(url)
@@ -2386,12 +2295,12 @@ test('sidebar click on the selected project leaves home for the project overview
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    uiStore.set({
+    act(() => uiStore.set({
       view: 'home', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'overview',
-    })
-    instances.clear()
-    seedDevbenchInstance()
-    let nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+    }))
+    cleanup()
+    mockDevbench()
+    let nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
     const row = nodes.find(function (node) {
       const cls = String(node.props && node.props.className || '')
       return cls.indexOf('devbench-project-row') === 0 && textOf(node, []).join(' ').indexOf('Workspace') >= 0
@@ -2401,7 +2310,7 @@ test('sidebar click on the selected project leaves home for the project overview
     assert.equal(uiStore.state.view, 'project')
     assert.equal(uiStore.state.activeTab, 'overview')
     assert.equal(uiStore.state.selectedProjectId, 'w1')
-    nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+    nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
     assert.equal(nodes.some(function (node) {
       return node.props && String(node.props.className || '').indexOf('devbench-project-header') >= 0
     }), true)
@@ -2409,7 +2318,7 @@ test('sidebar click on the selected project leaves home for the project overview
     anyGlobal.fetch = originalFetch
   }
 })
-test('sidebar click inside the project view keeps the current tab', function () {
+test('sidebar click inside the project view keeps the current tab', async function () {
   const originalFetch = globalThis.fetch
   anyGlobal.fetch = async function (url) {
     const target = String(url)
@@ -2419,12 +2328,12 @@ test('sidebar click inside the project view keeps the current tab', function () 
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    uiStore.set({
+    act(() => uiStore.set({
       view: 'project', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'requirements',
-    })
-    instances.clear()
-    seedDevbenchInstance()
-    const nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+    }))
+    cleanup()
+    mockDevbench()
+    const nodes = await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
     const row = nodes.find(function (node) {
       return node.props && node.props.className === 'devbench-project-row active'
     })
@@ -2460,24 +2369,24 @@ function homeTaskRows(nodes) {
     return node.props && String(node.props.className || '').indexOf('devbench-task-row') === 0
   })
 }
-test('project task list shows ten rows per page and loads more', function () {
-  instances.clear()
+test('project task list shows ten rows per page and loads more', async function () {
+  cleanup()
   const tasks = pageTasks(12)
   const props = { t: t, tasks: tasks, busyKey: '', onOpenSession: noop, onCancel: noop, onRetry: noop }
-  let nodes = render({ type: ProjectTasks, props: props, children: [] })
+  let nodes = await render({ type: ProjectTasks, props: props, children: [] })
   assert.equal(dataRows(nodes).length, 10)
   const loadMore = findButton(nodes, 'list.loadMore')
   assert.equal(Boolean(loadMore), true)
   assert.equal(textOf(nodes, []).join(' ').indexOf('list.shownAll') >= 0, false)
   loadMore.props.onClick()
-  nodes = render({ type: ProjectTasks, props: props, children: [] })
+  nodes = await render({ type: ProjectTasks, props: props, children: [] })
   assert.equal(dataRows(nodes).length, 12)
   assert.equal(findButton(nodes, 'list.loadMore'), undefined)
   assert.equal(textOf(nodes, []).join(' ').indexOf('list.shownAll') >= 0, true)
 })
-test('project task list hides the pager when the list fits one page', function () {
-  instances.clear()
-  const nodes = render({
+test('project task list hides the pager when the list fits one page', async function () {
+  cleanup()
+  const nodes = await render({
     type: ProjectTasks,
     props: { t: t, tasks: pageTasks(10), busyKey: '', onOpenSession: noop, onCancel: noop, onRetry: noop },
     children: [],
@@ -2493,31 +2402,31 @@ function tWithParams(key, params) {
   })
   return key + '{' + parts.join(',') + '}'
 }
-test('project task list advances ten rows per load more click until the end', function () {
-  instances.clear()
+test('project task list advances ten rows per load more click until the end', async function () {
+  cleanup()
   const tasks = pageTasks(25)
   const props = { t: tWithParams, tasks: tasks, busyKey: '', onOpenSession: noop, onCancel: noop, onRetry: noop }
-  let nodes = render({ type: ProjectTasks, props: props, children: [] })
+  let nodes = await render({ type: ProjectTasks, props: props, children: [] })
   assert.equal(dataRows(nodes).length, 10)
   let loadMore = findButton(nodes, 'list.loadMore')
   assert.equal(Boolean(loadMore), true)
   assert.equal(textOf(loadMore, []).join(' ').indexOf('count=10') >= 0, true)
   loadMore.props.onClick()
-  nodes = render({ type: ProjectTasks, props: props, children: [] })
+  nodes = await render({ type: ProjectTasks, props: props, children: [] })
   assert.equal(dataRows(nodes).length, 20)
   loadMore = findButton(nodes, 'list.loadMore')
   assert.equal(Boolean(loadMore), true)
   assert.equal(textOf(loadMore, []).join(' ').indexOf('count=20') >= 0, true)
   loadMore.props.onClick()
-  nodes = render({ type: ProjectTasks, props: props, children: [] })
+  nodes = await render({ type: ProjectTasks, props: props, children: [] })
   assert.equal(dataRows(nodes).length, 25)
   assert.equal(findButton(nodes, 'list.loadMore'), undefined)
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('list.shownAll') >= 0, true)
   assert.equal(text.indexOf('total=25') >= 0, true)
 })
-test('project review list shows ten rows per page and loads more', function () {
-  instances.clear()
+test('project review list shows ten rows per page and loads more', async function () {
+  cleanup()
   const reviews = []
   for (let index = 0; index < 12; index += 1) {
     reviews.push(Object.assign({}, reviewData, { name: '20260101-review-' + String(index) + '.md' }))
@@ -2527,21 +2436,21 @@ test('project review list shows ten rows per page and loads more', function () {
     content: { loading: false, error: '', data: null },
     onOpen: noop, onRetry: noop,
   }
-  let nodes = render({ type: ProjectReviews, props: props, children: [] })
+  let nodes = await render({ type: ProjectReviews, props: props, children: [] })
   assert.equal(dataRows(nodes).length, 10)
   const loadMore = findButton(nodes, 'list.loadMore')
   assert.equal(Boolean(loadMore), true)
   loadMore.props.onClick()
-  nodes = render({ type: ProjectReviews, props: props, children: [] })
+  nodes = await render({ type: ProjectReviews, props: props, children: [] })
   assert.equal(dataRows(nodes).length, 12)
   assert.equal(findButton(nodes, 'list.loadMore'), undefined)
   assert.equal(textOf(nodes, []).join(' ').indexOf('list.shownAll') >= 0, true)
 })
-test('project requirement list shows ten rows, loads more and resets on search', function () {
-  uiStore.set({
+test('project requirement list shows ten rows, loads more and resets on search', async function () {
+  act(() => uiStore.set({
     view: 'project', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'requirements',
-  })
-  instances.clear()
+  }))
+  cleanup()
   const requirements = []
   for (let index = 0; index < 12; index += 1) {
     requirements.push(Object.assign({}, summary, {
@@ -2557,12 +2466,12 @@ test('project requirement list shows ten rows, loads more and resets on search',
       showToast: noop,
     }
   }
-  let nodes = render({ type: ProjectRequirements, props: props(), children: [] })
+  let nodes = await render({ type: ProjectRequirements, props: props(), children: [] })
   assert.equal(dataRows(nodes).length, 10)
   const loadMore = findButton(nodes, 'list.loadMore')
   assert.equal(Boolean(loadMore), true)
   loadMore.props.onClick()
-  nodes = render({ type: ProjectRequirements, props: props(), children: [] })
+  nodes = await render({ type: ProjectRequirements, props: props(), children: [] })
   assert.equal(dataRows(nodes).length, 12)
   assert.equal(findButton(nodes, 'list.loadMore'), undefined)
   const search = nodes.find(function (node) {
@@ -2570,27 +2479,27 @@ test('project requirement list shows ten rows, loads more and resets on search',
   })
   assert.equal(Boolean(search), true)
   search.props.onChange({ target: { value: 'paged' } })
-  nodes = render({ type: ProjectRequirements, props: props(), children: [] })
+  nodes = await render({ type: ProjectRequirements, props: props(), children: [] })
   assert.equal(dataRows(nodes).length, 10)
   assert.equal(Boolean(findButton(nodes, 'list.loadMore')), true)
 })
-test('home recent task list shows ten rows per page and loads more', function () {
+test('home recent task list shows ten rows per page and loads more', async function () {
   const recent = pageTasks(12)
   const data = Object.assign({}, dashboardData, {
     recentTasks: recent, activeTasks: [], runningRequirements: [],
   })
-  seedHomeInstance({ dashboard: { loading: false, error: '', data: data } })
-  let nodes = render({ type: HomeView, props: homeProps(), children: [] })
+  mockHome({ dashboard: { loading: false, error: '', data: data } })
+  let nodes = await render({ type: HomeView, props: homeProps(), children: [] })
   assert.equal(homeTaskRows(nodes).length, 10)
   const loadMore = findButton(nodes, 'list.loadMore')
   assert.equal(Boolean(loadMore), true)
   loadMore.props.onClick()
-  nodes = render({ type: HomeView, props: homeProps(), children: [] })
+  nodes = await render({ type: HomeView, props: homeProps(), children: [] })
   assert.equal(homeTaskRows(nodes).length, 12)
   assert.equal(findButton(nodes, 'list.loadMore'), undefined)
   assert.equal(textOf(nodes, []).join(' ').indexOf('list.shownAll') >= 0, true)
 })
-test('home unfinished task list pages tasks and running requirements together', function () {
+test('home unfinished task list pages tasks and running requirements together', async function () {
   const active = []
   for (let index = 0; index < 12; index += 1) {
     active.push(Object.assign({}, taskData, {
@@ -2613,8 +2522,8 @@ test('home unfinished task list pages tasks and running requirements together', 
     activeTasks: active,
     runningRequirements: running,
   })
-  seedHomeInstance({ dashboard: { loading: false, error: '', data: data } })
-  let nodes = render({ type: HomeView, props: homeProps(), children: [] })
+  mockHome({ dashboard: { loading: false, error: '', data: data } })
+  let nodes = await render({ type: HomeView, props: homeProps(), children: [] })
   assert.equal(homeTaskRows(nodes).length, 11)
   let sectionTitles = nodes.filter(function (node) {
     return node.props && node.props.className === 'devbench-section-title'
@@ -2623,7 +2532,7 @@ test('home unfinished task list pages tasks and running requirements together', 
   const loadMore = findButton(nodes, 'list.loadMore')
   assert.equal(Boolean(loadMore), true)
   loadMore.props.onClick()
-  nodes = render({ type: HomeView, props: homeProps(), children: [] })
+  nodes = await render({ type: HomeView, props: homeProps(), children: [] })
   assert.equal(homeTaskRows(nodes).length, 15)
   sectionTitles = nodes.filter(function (node) {
     return node.props && node.props.className === 'devbench-section-title'
@@ -2634,24 +2543,24 @@ test('home unfinished task list pages tasks and running requirements together', 
   assert.equal(textOf(nodes, []).join(' ').indexOf('list.shownAll') >= 0, true)
 })
 
-test('workspace changes panel renders loading and hides itself for non-git projects', function () {
-  instances.clear()
-  seedWorkspaceChangesHooks({ loading: true, data: null })
-  let nodes = render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
+test('workspace changes panel renders loading and hides itself for non-git projects', async function () {
+  cleanup()
+  mockWorkspaceChanges({ loading: true, data: null })
+  let nodes = await render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('tabs.overview.workspace') >= 0, true)
   assert.equal(text.indexOf('tabs.overview.workspaceLoading') >= 0, true)
   assert.equal(findButton(nodes, 'tabs.overview.pull'), undefined)
 
-  instances.clear()
-  seedWorkspaceChangesHooks({ data: Object.assign({}, workspaceChangesData, { initialized: false }) })
-  nodes = render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
+  cleanup()
+  mockWorkspaceChanges({ data: Object.assign({}, workspaceChangesData, { initialized: false }) })
+  nodes = await render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
   assert.equal(nodes.length, 0)
 })
-test('workspace changes panel lists files, branch, upstream and the workflow diff', function () {
-  instances.clear()
-  seedWorkspaceChangesHooks()
-  let nodes = render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
+test('workspace changes panel lists files, branch, upstream and the workflow diff', async function () {
+  cleanup()
+  mockWorkspaceChanges()
+  let nodes = await render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
   let text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('tabs.overview.workspace') >= 0, true)
   assert.equal(text.indexOf('main') >= 0, true)
@@ -2675,30 +2584,30 @@ test('workspace changes panel lists files, branch, upstream and the workflow dif
   // The diff stays collapsed until requested, then scrolls inside the panel.
   assert.equal(nodes.some(function (node) { return node.type === 'pre' }), false)
   findButton(nodes, 'tabs.overview.workspace.showDiff').props.onClick()
-  nodes = render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
+  nodes = await render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
   const pre = nodes.find(function (node) { return node.type === 'pre' })
   assert.equal(Boolean(pre), true)
   assert.equal(pre.props.className, 'devbench-ws-diff')
   assert.equal(pre.children[0], workspaceChangesData.diffText)
   assert.equal(textOf(nodes, []).join(' ').indexOf('tabs.overview.workspace.truncated') >= 0, false)
 
-  instances.clear()
-  seedWorkspaceChangesHooks({
+  cleanup()
+  mockWorkspaceChanges({
     showDiff: true,
     data: Object.assign({}, workspaceChangesData, { truncated: true }),
   })
-  nodes = render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
+  nodes = await render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
   assert.equal(textOf(nodes, []).join(' ').indexOf('tabs.overview.workspace.truncated') >= 0, true)
 })
-test('workspace changes panel disables actions without changes, upstream or remote', function () {
-  instances.clear()
-  seedWorkspaceChangesHooks({
+test('workspace changes panel disables actions without changes, upstream or remote', async function () {
+  cleanup()
+  mockWorkspaceChanges({
     data: Object.assign({}, workspaceChangesData, {
       hasChanges: false, files: [], changedFiles: [], diffText: '',
       upstream: null, remote: null, remotes: [], ahead: 0, behind: 0,
     }),
   })
-  let nodes = render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
+  let nodes = await render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
   let text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('tabs.overview.workspace.clean') >= 0, true)
   assert.equal(text.indexOf('tabs.overview.workspace.noRemote') >= 0, true)
@@ -2710,22 +2619,22 @@ test('workspace changes panel disables actions without changes, upstream or remo
   assert.equal(findButton(nodes, 'tabs.overview.push').props.title, 'tabs.overview.workspace.noRemote')
 
   // A missing upstream only blocks pull; push stays available through the remote.
-  instances.clear()
-  seedWorkspaceChangesHooks({
+  cleanup()
+  mockWorkspaceChanges({
     data: Object.assign({}, workspaceChangesData, { upstream: null, ahead: 0, behind: 0 }),
   })
-  nodes = render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
+  nodes = await render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
   text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('tabs.overview.workspace.noUpstream') >= 0, true)
   assert.equal(findButton(nodes, 'tabs.overview.pull').props.disabled, true)
   assert.equal(findButton(nodes, 'tabs.overview.pull').props.title, 'tabs.overview.workspace.noUpstream')
   assert.equal(findButton(nodes, 'tabs.overview.push').props.disabled, false)
 })
-test('workspace changes panel blocks write actions during AI commit and on detached HEAD', function () {
+test('workspace changes panel blocks write actions during AI commit and on detached HEAD', async function () {
   const aiTask = Object.assign({}, taskData, { id: 'ws-commit-task' })
-  instances.clear()
-  seedWorkspaceChangesHooks()
-  let nodes = render({
+  cleanup()
+  mockWorkspaceChanges()
+  let nodes = await render({
     type: WorkspaceChangesPanel,
     props: workspaceChangesProps({ activeCommitTask: aiTask }),
     children: [],
@@ -2735,13 +2644,13 @@ test('workspace changes panel blocks write actions during AI commit and on detac
   assert.equal(findButton(nodes, 'tabs.overview.pull').props.disabled, true)
   assert.equal(findButton(nodes, 'tabs.overview.pull').props.title, 'project.ai.commitActive')
 
-  instances.clear()
-  seedWorkspaceChangesHooks({
+  cleanup()
+  mockWorkspaceChanges({
     data: Object.assign({}, workspaceChangesData, {
       branch: '', head: '', detached: true, upstream: null, ahead: 0, behind: 0,
     }),
   })
-  nodes = render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
+  nodes = await render({ type: WorkspaceChangesPanel, props: workspaceChangesProps(), children: [] })
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('tabs.overview.workspace.detached') >= 0, true)
   assert.equal(findButton(nodes, 'tabs.overview.manualCommit').props.disabled, true)
@@ -2752,15 +2661,15 @@ test('workspace changes panel blocks write actions during AI commit and on detac
   assert.equal(findButton(nodes, 'tabs.overview.push').props.title, 'tabs.overview.workspace.detached')
 })
 test('workspace changes panel opens the manual commit editor and validates the message', async function () {
-  instances.clear()
+  cleanup()
   const toasts = []
-  seedWorkspaceChangesHooks()
+  mockWorkspaceChanges()
   const props = workspaceChangesProps({
     showToast: function (kind, text) { toasts.push({ kind: kind, text: text }) },
   })
-  let nodes = render({ type: WorkspaceChangesPanel, props: props, children: [] })
+  let nodes = await render({ type: WorkspaceChangesPanel, props: props, children: [] })
   findButton(nodes, 'tabs.overview.manualCommit').props.onClick()
-  nodes = render({ type: WorkspaceChangesPanel, props: props, children: [] })
+  nodes = await render({ type: WorkspaceChangesPanel, props: props, children: [] })
   const textarea = nodes.find(function (node) { return node.type === 'textarea' })
   assert.equal(Boolean(textarea), true)
   assert.equal(textarea.props.maxLength, 2000)
@@ -2774,7 +2683,7 @@ test('workspace changes panel opens the manual commit editor and validates the m
   assert.equal(textOf(nodes, []).join(' ').indexOf('tabs.overview.manualCommitting') >= 0, false)
   // Cancel closes the editor without committing.
   findButton(nodes, 'tabs.overview.commitCancel').props.onClick()
-  nodes = render({ type: WorkspaceChangesPanel, props: props, children: [] })
+  nodes = await render({ type: WorkspaceChangesPanel, props: props, children: [] })
   assert.equal(nodes.some(function (node) { return node.type === 'textarea' }), false)
 })
 test('manual commit posts the typed message and refreshes the panel', async function () {
@@ -2796,26 +2705,26 @@ test('manual commit posts the typed message and refreshes the panel', async func
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    instances.clear()
-    seedWorkspaceChangesHooks({ commitOpen: true, message: 'feat: 手动提交' })
+    cleanup()
+    mockWorkspaceChanges({ commitOpen: true, message: 'feat: 手动提交' })
     const props = workspaceChangesProps({
       showToast: function (kind, text) { toasts.push({ kind: kind, text: text }) },
       onChanged: function () { changed += 1 },
     })
-    let nodes = render({ type: WorkspaceChangesPanel, props: props, children: [] })
+    let nodes = await render({ type: WorkspaceChangesPanel, props: props, children: [] })
     const commitPromise = findButton(nodes, 'tabs.overview.commitConfirm').props.onClick()
     // The confirmation dialog shows the staged file count before committing.
     assert.equal(calls.length, 0)
-    closeDialog(true)
+    act(() => closeDialog(true))
     await commitPromise
-    await new Promise(function (resolve) { setTimeout(resolve, 0) })
+    await flushAsyncWork()
     const manual = calls.find(function (call) { return call.url.indexOf('/project/commit/manual') > 0 })
     assert.equal(manual.method, 'POST')
     assert.deepEqual(manual.body, { workspaceId: 'w1', message: 'feat: 手动提交' })
     assert.equal(calls.some(function (call) { return call.url.indexOf('/project/changes?') > 0 }), true)
     assert.equal(toasts.some(function (toast) { return toast.text === 'tabs.overview.commitSuccess' }), true)
     assert.equal(changed, 1)
-    nodes = render({ type: WorkspaceChangesPanel, props: props, children: [] })
+    nodes = await render({ type: WorkspaceChangesPanel, props: props, children: [] })
     assert.equal(nodes.some(function (node) { return node.type === 'textarea' }), false)
   } finally {
     anyGlobal.fetch = originalFetch
@@ -2852,28 +2761,28 @@ test('pull and push confirm before calling the endpoints and toast the result', 
     })
   }
   try {
-    instances.clear()
-    seedWorkspaceChangesHooks()
-    let nodes = render({ type: WorkspaceChangesPanel, props: panelProps(), children: [] })
+    cleanup()
+    mockWorkspaceChanges()
+    let nodes = await render({ type: WorkspaceChangesPanel, props: panelProps(), children: [] })
     const pullPromise = findButton(nodes, 'tabs.overview.pull').props.onClick()
     assert.equal(calls.length, 0)
-    closeDialog(true)
+    act(() => closeDialog(true))
     await pullPromise
-    await new Promise(function (resolve) { setTimeout(resolve, 0) })
+    await flushAsyncWork()
     const pull = calls.find(function (call) { return call.url.indexOf('/project/pull') > 0 })
     assert.equal(pull.method, 'POST')
     assert.deepEqual(pull.body, { workspaceId: 'w1' })
     assert.equal(toasts.some(function (toast) { return toast.text === 'tabs.overview.pullSuccess' }), true)
     assert.equal(changed, 1)
 
-    instances.clear()
-    seedWorkspaceChangesHooks()
-    nodes = render({ type: WorkspaceChangesPanel, props: panelProps(), children: [] })
+    cleanup()
+    mockWorkspaceChanges()
+    nodes = await render({ type: WorkspaceChangesPanel, props: panelProps(), children: [] })
     const pushPromise = findButton(nodes, 'tabs.overview.push').props.onClick()
     assert.equal(calls.some(function (call) { return call.url.indexOf('/project/push') > 0 }), false)
-    closeDialog(true)
+    act(() => closeDialog(true))
     await pushPromise
-    await new Promise(function (resolve) { setTimeout(resolve, 0) })
+    await flushAsyncWork()
     const push = calls.find(function (call) { return call.url.indexOf('/project/push') > 0 })
     assert.equal(push.method, 'POST')
     assert.deepEqual(push.body, { workspaceId: 'w1' })
@@ -2882,11 +2791,11 @@ test('pull and push confirm before calling the endpoints and toast the result', 
 
     // An already-up-to-date pull reports it instead of claiming new commits.
     upToDate = true
-    instances.clear()
-    seedWorkspaceChangesHooks()
-    nodes = render({ type: WorkspaceChangesPanel, props: panelProps(), children: [] })
+    cleanup()
+    mockWorkspaceChanges()
+    nodes = await render({ type: WorkspaceChangesPanel, props: panelProps(), children: [] })
     const freshPromise = findButton(nodes, 'tabs.overview.pull').props.onClick()
-    closeDialog(true)
+    act(() => closeDialog(true))
     await freshPromise
     assert.equal(toasts.some(function (toast) { return toast.text === 'tabs.overview.pullUpToDate' }), true)
     assert.equal(changed, 3)
@@ -2894,18 +2803,10 @@ test('pull and push confirm before calling the endpoints and toast the result', 
     anyGlobal.fetch = originalFetch
   }
 })
-test('commits tab renders only the commit history without the workspace panel', function () {
-  setSelection('commits', commitData.hash)
-  instances.clear()
-  const instance = { hooks: [] }
-  instance.hooks[0] = { value: { rows: [commitData], hasMore: false, loadingMore: false, refreshing: false, error: '' } }
-  instance.hooks[1] = { value: '' }
-  instance.hooks[2] = { value: 'all' }
-  instance.hooks[3] = { value: { loading: false, error: '', data: null, hash: '' } }
-  instance.hooks[4] = { value: null }
-  instance.hooks[5] = { value: '' }
-  instances.set('root:', instance)
-  const nodes = render({
+test('commits tab renders only the commit history without the workspace panel', async function () {
+  act(() => setSelection('commits', commitData.hash))
+  cleanup()
+  const nodes = await render({
     type: ProjectCommits,
     props: {
       t: t, commits: [commitData], tasks: [], workspaceId: 'w1', reviewingCommit: '',
@@ -2919,8 +2820,8 @@ test('commits tab renders only the commit history without the workspace panel', 
     return node.props && node.props.className === 'devbench-tab-fill'
   })
   assert.equal(Boolean(tabFill), true)
-  assert.equal(tabFill.children.length, 2)
-  assert.equal(tabFill.children[0].props.className, 'devbench-master')
+  assert.equal(tabFill.element.children.length, 1)
+  assert.equal(tabFill.element.children[0].className, 'devbench-master')
   assert.equal(nodes.some(function (node) {
     return node.props && node.props.className === 'devbench-ws-panel'
   }), false)
@@ -2946,11 +2847,11 @@ function overviewPanelProps(overrides) {
   }, overrides)
 }
 test('project overview renders the workspace panel between the AI actions and the recent grid', async function () {
-  instances.clear()
+  cleanup()
   // ProjectOverview is the root instance, so its working-tree panel child is
   // the third rendered child (index 2) at instance key 'root:.2:'.
-  seedWorkspaceChangesHooks({ loading: true, data: null }, 'root:.2:')
-  let nodes = render({ type: ProjectOverview, props: overviewPanelProps({}), children: [] })
+  mockWorkspaceChanges({ loading: true, data: null })
+  let nodes = await render({ type: ProjectOverview, props: overviewPanelProps({}), children: [] })
   function findIndexByClass(className) {
     return nodes.findIndex(function (node) {
       return node.props && String(node.props.className || '').split(/\s+/).indexOf(className) >= 0
@@ -2986,30 +2887,30 @@ test('project overview renders the workspace panel between the AI actions and th
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    instances.clear()
-    seedWorkspaceChangesHooks({}, 'root:.2:')
+    cleanup()
+    mockWorkspaceChanges()
     const props = overviewPanelProps({
       showToast: function (kind, text) { toasts.push({ kind: kind, text: text }) },
       onChanged: function () { changed += 1 },
     })
-    nodes = render({ type: ProjectOverview, props: props, children: [] })
+    nodes = await render({ type: ProjectOverview, props: props, children: [] })
     // The seeded panel renders its full working-tree snapshot with live actions.
     findButton(nodes, 'tabs.overview.manualCommit').props.onClick()
-    nodes = render({ type: ProjectOverview, props: props, children: [] })
+    nodes = await render({ type: ProjectOverview, props: props, children: [] })
     assert.equal(textOf(nodes, []).join(' ').indexOf('tabs.overview.commitHint') >= 0, true)
     await findButton(nodes, 'tabs.overview.commitConfirm').props.onClick()
     assert.deepEqual(toasts, [{ kind: 'error', text: 'tabs.overview.commitEmpty' }])
     const pullPromise = findButton(nodes, 'tabs.overview.pull').props.onClick()
-    closeDialog(true)
+    act(() => closeDialog(true))
     await pullPromise
-    await new Promise(function (resolve) { setTimeout(resolve, 0) })
+    await flushAsyncWork()
     assert.equal(changed, 1)
     assert.equal(toasts.some(function (toast) { return toast.text === 'tabs.overview.pullSuccess' }), true)
   } finally {
     anyGlobal.fetch = originalFetch
   }
 })
-test('project styles keep master-detail panes scrollable and commit diffs independently scrollable', function () {
+test('project styles keep master-detail panes scrollable and commit diffs independently scrollable', async function () {
   assert.equal(CSS.indexOf('.devbench-tab-fill{') >= 0, true)
   assert.equal(CSS.indexOf('.devbench-master-detail-body{flex:1;min-height:0;overflow:auto') >= 0, true)
   assert.equal(CSS.indexOf('.devbench-master-detail-body .devbench-md{overflow:visible') >= 0, true)
@@ -3048,40 +2949,29 @@ function documentDetailFixture(doc?, body?) {
     data: target, key: 'w1/' + target.id,
   }
 }
-/** Seeds the ProjectDocuments hook slots by index (hook order lives in documents.js). */
-function seedDocumentsHooks(options?) {
-  const opts = options || {}
-  const instance = { hooks: [] }
-  // 0 list, 1 selected, 2 detail, 3 editing, 4 titleDraft, 5 bodyDraft, 6 dirty,
-  // 7 saving, 8 saveError, 9 conflict, 10 createModal, 11 deleteModal, 12 search,
-  // 13 scope, 14 limit, 15 fullSearch, 16 markdownHelpOpen; refs and effects follow.
-  instance.hooks[0] = {
-    value: opts.list || { loading: false, error: '', data: documentSummaries, workspaceId: 'w1' },
+function mockDocuments(options: any = {}): void {
+  respondOnce('/documents', { documents: options.list?.data || documentSummaries }, options.list?.error)
+  if (options.detail) respondOnce('/document/get', { document: options.detail.data, body: options.detail.body })
+  afterRender = async () => {
+    if (options.search) await currentNodes().find(node => node.type === 'input' && node.props['aria-label'] === 'project.documents.search').props.onChange({ target: { value: options.search } })
+    if (options.scope) await currentNodes().find(node => node.type === 'select').props.onChange({ target: { value: options.scope } })
+    if (options.selected) {
+      const row = dataRows(currentNodes()).find(node => textOf(node, []).join(' ').includes(options.selected.title))
+      await row.props.onClick()
+    }
+    if (options.editing) {
+      await currentNodes().find(node => node.type === 'button' && node.props.title === 'project.documents.edit').props.onClick()
+      if (options.titleDraft) await currentNodes().find(node => node.type === 'input' && node.props['aria-label'] === 'detail.title').props.onChange({ target: { value: options.titleDraft } })
+      if (options.bodyDraft) await currentNodes().find(node => node.type === 'textarea').props.onChange({ target: { value: options.bodyDraft } })
+    }
+    if (options.createModal) {
+      await findButton(currentNodes(), 'project.documents.new').props.onClick()
+      const inputs = currentNodes().filter(node => node.type === 'input')
+      await inputs[inputs.length - 1].props.onChange({ target: { value: options.createModal.title } })
+      await currentNodes().find(node => node.type === 'textarea').props.onChange({ target: { value: options.createModal.body } })
+    }
+    if (options.deleteModal) await currentNodes().find(node => node.type === 'button' && node.props.title === 'project.documents.delete').props.onClick()
   }
-  instance.hooks[1] = { value: opts.selected === undefined ? null : opts.selected }
-  instance.hooks[2] = {
-    value: opts.detail || { loading: false, error: '', body: '', data: null, key: '' },
-  }
-  instance.hooks[3] = { value: opts.editing === true }
-  instance.hooks[4] = { value: opts.titleDraft || '' }
-  instance.hooks[5] = { value: opts.bodyDraft || '' }
-  instance.hooks[6] = { value: opts.dirty === true }
-  instance.hooks[7] = { value: opts.saving === true }
-  instance.hooks[8] = { value: opts.saveError || '' }
-  instance.hooks[9] = { value: opts.conflict === true }
-  instance.hooks[10] = { value: opts.createModal || null }
-  instance.hooks[11] = { value: opts.deleteModal || null }
-  instance.hooks[12] = { value: opts.search || '' }
-  instance.hooks[13] = { value: opts.scope || 'title' }
-  instance.hooks[14] = { value: opts.limit || 10 }
-  instance.hooks[15] = {
-    value: opts.fullSearch || {
-      scope: '', query: '', loading: false, error: '', items: [], hasMore: false, total: 0,
-    },
-  }
-  instance.hooks[16] = { value: opts.markdownHelpOpen === true }
-  instances.set('root:', instance)
-  return instance
 }
 function documentsProps(overrides?) {
   return Object.assign({
@@ -3089,35 +2979,21 @@ function documentsProps(overrides?) {
     onOpenSettings: noop, showToast: noop,
   }, overrides)
 }
-test('documents title scope filters titles only while full scope shows host hits', function () {
+test('documents title scope filters titles only while full scope shows host hits', async function () {
   assert.equal(documentTitleMatches(documentSummaries[0], '发布'), true)
   assert.equal(documentTitleMatches(documentSummaries[0], 'DOC-2026'), false)
   assert.equal(documentTitleMatches(documentSummaries[0], '  '), true)
   assert.equal(documentTitleMatches(null, 'x'), false)
 })
-test('project workbench renders the documents tab master-detail', function () {
-  uiStore.set({
+test('project workbench renders the documents tab master-detail', async function () {
+  act(() => uiStore.set({
     view: 'project', selectedProjectId: 'w1', selectedRequirement: null, activeTab: 'documents',
-  })
-  instances.clear()
-  seedDevbenchInstance()
-  render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
-  // Locate the ProjectDocuments instance by its list-state hook, then seed it.
-  let documents = null
-  instances.forEach(function (instance) {
-    if (documents !== null) return
-    if (instance.hooks.some(function (hook) {
-      return hook && hook.value && typeof hook.value === 'object' &&
-        Array.isArray(hook.value.data) && hook.value.workspaceId !== undefined
-    })) documents = instance
-  })
-  assert.equal(Boolean(documents), true)
-  documents.hooks[0].value = {
-    loading: false, error: '', data: documentSummaries, workspaceId: 'w1',
-  }
-  documents.hooks[1].value = selectedDocumentFixture()
-  documents.hooks[2].value = documentDetailFixture()
-  const nodes = render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  }))
+  cleanup()
+  mockDevbench()
+  await render({ type: RequirementsPage, props: { t: t, useSessions: undefined }, children: [] })
+  await dataRows(currentNodes()).find(node => textOf(node, []).join(' ').includes('发布流程')).props.onClick()
+  const nodes = currentNodes()
   const text = textOf(nodes, []).join(' ')
   assert.equal(text.indexOf('发布流程') >= 0, true)
   assert.equal(text.indexOf('发布检查清单') >= 0, true)
@@ -3125,14 +3001,21 @@ test('project workbench renders the documents tab master-detail', function () {
   assert.equal(nodes.some(function (node) {
     return node.props && node.props.className === 'devbench-master'
   }), true)
-  uiStore.set({ activeTab: 'overview' })
+  act(() => uiStore.set({ activeTab: 'overview' }))
 })
-test('documents tab renders title-only rows, selection and the unconfigured state', function () {
+test('documents tab renders title-only rows, selection and the unconfigured state', async function () {
+  const originalFetch = globalThis.fetch
+  let finishDetail: (value: Response) => void
+  const detailResponse = new Promise<Response>(resolve => { finishDetail = resolve })
+  const loadedDetail = { document: documentSummaries[1], body: '# 检查清单\n\n核对编译产物。' }
+  globalThis.fetch = (url, init) => new URL(String(url), 'http://127.0.0.1').pathname.endsWith('/document/get')
+    ? detailResponse
+    : originalFetch(url, init)
   try {
-    instances.clear()
-    seedDocumentsHooks()
+    cleanup()
+    mockDocuments()
     const props = documentsProps()
-    let nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    let nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     let rows = dataRows(nodes)
     assert.equal(rows.length, 2)
     // Requirement: the list shows titles only (no id, timestamps, status or snippet).
@@ -3147,21 +3030,25 @@ test('documents tab renders title-only rows, selection and the unconfigured stat
       return node.type === 'select' && node.props['aria-label'] === 'project.documents.search.scope'
     })
     assert.equal(Boolean(scopeSelect), true)
-    assert.deepEqual(scopeSelect.children[0].map(function (option) { return option.props.value }),
+    assert.deepEqual(scopeSelect.children.map(function (option) { return (option as any).props.value }),
       ['title', 'full'])
     // Selecting a row opens the detail pane and keeps the local list selection.
-    rows[1].props.onClick({ stopPropagation: noop })
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    await rows[1].props.onClick({ stopPropagation: noop })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     const activeRow = nodes.find(function (node) {
       return node.props && node.props.className === 'devbench-master-row active'
     })
     assert.equal(Boolean(activeRow), true)
     assert.equal(textOf(activeRow, []).join(' ').indexOf('发布检查清单') >= 0, true)
     assert.equal(textOf(nodes, []).join(' ').indexOf('panel.loading') >= 0, true)
+    await act(async () => { finishDetail(reply(loadedDetail)) })
+    nodes = currentNodes()
+    assert.equal(textOf(nodes, []).join(' ').includes('核对编译产物。'), true)
+    assert.equal(textOf(nodes, []).join(' ').includes('panel.loading'), false)
 
-    instances.clear()
+    cleanup()
     const unconfigured = []
-    nodes = render({
+    nodes = await render({
       type: ProjectDocuments,
       props: documentsProps({
         configured: false,
@@ -3177,7 +3064,9 @@ test('documents tab renders title-only rows, selection and the unconfigured stat
     assert.deepEqual(unconfigured, ['settings'])
     assert.equal(dataRows(nodes).length, 0)
   } finally {
-    instances.clear()
+    await act(async () => { finishDetail(reply(loadedDetail)) })
+    cleanup()
+    globalThis.fetch = originalFetch
   }
 })
 test('documents edit mode saves without leaving the editor', async function () {
@@ -3201,22 +3090,22 @@ test('documents edit mode saves without leaving the editor', async function () {
     }
   }
   try {
-    instances.clear()
-    seedDocumentsHooks({
+    cleanup()
+    mockDocuments({
       selected: selectedDocumentFixture(),
       detail: documentDetailFixture(),
     })
     const props = documentsProps({
       showToast: function (kind, text) { toasts.push({ kind: kind, text: text }) },
     })
-    let nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    let nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     assert.equal(textOf(nodes, []).join(' ').indexOf('先构建再发布。') >= 0, true)
     const edit = nodes.find(function (node) {
       return node.type === 'button' && node.props.title === 'project.documents.edit'
     })
     assert.equal(Boolean(edit), true)
     edit.props.onClick()
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     assert.equal(nodes.some(function (node) {
       return node.props && node.props.className === 'devbench-md-editor'
     }), true)
@@ -3231,7 +3120,7 @@ test('documents edit mode saves without leaving the editor', async function () {
     // Editing keeps the draft locally and enables saving without leaving edit mode.
     titleInput.props.onChange({ target: { value: '发布流程（更新）' } })
     textarea.props.onChange({ target: { value: '# 发布流程\n\n新的正文。' } })
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     assert.equal(textOf(nodes, []).join(' ').indexOf('detail.saveState.unsaved') >= 0, true)
     const saveButton = findButton(nodes, 'project.documents.save')
     assert.equal(saveButton.props.disabled, false)
@@ -3245,7 +3134,7 @@ test('documents edit mode saves without leaving the editor', async function () {
       body: '# 发布流程\n\n新的正文。', expectedUpdatedAt: '2026-10-31T01:00:00.000Z',
     })
     assert.equal(toasts.some(function (toast) { return toast.text === 'project.documents.saved' }), true)
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     // Saving never exits the editing surface by itself.
     assert.equal(nodes.some(function (node) { return node.type === 'textarea' }), true)
     assert.equal(textOf(nodes, []).join(' ').indexOf('project.documents.saved') >= 0, false)
@@ -3266,8 +3155,8 @@ test('documents save conflict keeps the local draft and offers reload or overwri
     }
   }
   try {
-    instances.clear()
-    seedDocumentsHooks({
+    cleanup()
+    mockDocuments({
       selected: selectedDocumentFixture(),
       detail: documentDetailFixture(),
       editing: true,
@@ -3276,10 +3165,10 @@ test('documents save conflict keeps the local draft and offers reload or overwri
       dirty: true,
     })
     const props = documentsProps()
-    let nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    let nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     await findButton(nodes, 'project.documents.save').props.onClick()
     await flushMicrotasks()
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     const text = textOf(nodes, []).join(' ')
     assert.equal(text.indexOf('project.documents.conflict.banner') >= 0, true)
     assert.equal(findButton(nodes, 'project.documents.conflict.reload') !== undefined, true)
@@ -3330,12 +3219,12 @@ test('documents tab creates and deletes documents through the host api', async f
     return { status: 200, json: async function () { return { ok: true, value: value } } }
   }
   try {
-    instances.clear()
-    seedDocumentsHooks({
+    cleanup()
+    mockDocuments({
       createModal: { title: '发布说明', body: '# 初次', busy: false, error: '' },
     })
     let props = documentsProps()
-    let nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    let nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     await findButton(nodes, 'project.documents.new.create').props.onClick()
     await flushMicrotasks()
     const createCall = calls.find(function (call) { return call.url.indexOf('/document/create') > 0 })
@@ -3344,27 +3233,27 @@ test('documents tab creates and deletes documents through the host api', async f
       workspaceId: 'w1', title: '发布说明', body: '# 初次',
     })
     assert.equal(calls.some(function (call) { return call.url.indexOf('/documents?') > 0 }), true)
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     assert.equal(dataRows(nodes).length, 3)
     assert.equal(textOf(nodes, []).join(' ').indexOf('发布说明') >= 0, true)
 
     // Deleting the selected document clears the detail pane and reloads the list.
     calls.length = 0
     nextDocuments = documentSummaries
-    instances.clear()
-    seedDocumentsHooks({
+    cleanup()
+    mockDocuments({
       selected: selectedDocumentFixture(),
       detail: documentDetailFixture(),
       deleteModal: { doc: documentSummaries[0], busy: false, error: '' },
     })
     props = documentsProps()
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     await findButton(nodes, 'action.delete').props.onClick()
     await flushMicrotasks()
     const deleteCall = calls.find(function (call) { return call.url.indexOf('/document/delete') > 0 })
     assert.equal(Boolean(deleteCall), true)
     assert.deepEqual(deleteCall.body, { workspaceId: 'w1', id: 'DOC-20261031-001' })
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     assert.equal(dataRows(nodes).length, 1)
     assert.equal(textOf(nodes, []).join(' ').indexOf('project.documents.empty.title') >= 0, true)
     assert.equal(textOf(nodes, []).join(' ').indexOf('project.documents.deleted') >= 0, false)
@@ -3394,28 +3283,22 @@ test('documents full scope debounces the host search and retries failures', asyn
     }
   }
   try {
-    instances.clear()
-    seedDocumentsHooks({ search: 'needle', scope: 'full' })
+    cleanup()
+    mockDocuments({ search: 'needle', scope: 'full' })
     const props = documentsProps()
-    let nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    let nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     assert.equal(textOf(nodes, []).join(' ').indexOf('project.documents.search.loading') >= 0, true)
-    const instance = instances.get('root:')
-    const effectIndex = instance.hooks.findIndex(function (hook) {
-      return hook && typeof hook.fn === 'function' && Array.isArray(hook.deps) && hook.deps.length === 4
-    })
-    assert.equal(effectIndex >= 0, true)
-    instance.hooks[effectIndex].fn()
-    t.mock.timers.tick(249)
+    await act(async () => { t.mock.timers.tick(249) })
     await flushMicrotasks()
     assert.equal(calls.length, 0)
-    t.mock.timers.tick(1)
+    await act(async () => { t.mock.timers.tick(1) })
     await flushMicrotasks()
     assert.equal(calls.length, 1)
     assert.equal(calls[0].url.indexOf('/document/search?') > 0, true)
     assert.equal(calls[0].url.indexOf('workspaceId=w1') > 0, true)
     assert.equal(calls[0].url.indexOf('q=needle') > 0, true)
     assert.equal(calls[0].url.indexOf('scope=full') > 0, true)
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     const text = textOf(nodes, []).join(' ')
     assert.equal(text.indexOf('发布检查清单') >= 0, true)
     assert.equal(text.indexOf('project.documents.search.hasMore') >= 0, true)
@@ -3429,10 +3312,11 @@ test('documents full scope debounces the host search and retries failures', asyn
         },
       }
     }
-    instance.hooks[effectIndex].fn()
-    t.mock.timers.tick(250)
+    const searchInput = currentNodes().find(node => node.type === 'input' && node.props['aria-label'] === 'project.documents.search')
+    await searchInput.props.onChange({ target: { value: 'needle next' } })
+    await act(async () => { t.mock.timers.tick(250) })
     await flushMicrotasks()
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     let errorText = textOf(nodes, []).join(' ')
     assert.equal(errorText.indexOf('search failed') >= 0, true)
     const retry = findButton(nodes, 'project.documents.search.retry')
@@ -3444,14 +3328,14 @@ test('documents full scope debounces the host search and retries failures', asyn
         json: async function () {
           return {
             ok: true,
-            value: { query: 'needle', scope: 'full', total: 1, hasMore: false, items: [hit] },
+            value: { query: 'needle next', scope: 'full', total: 1, hasMore: false, items: [hit] },
           }
         },
       }
     }
     await retry.props.onClick()
     await flushMicrotasks()
-    nodes = render({ type: ProjectDocuments, props: props, children: [] })
+    nodes = await render({ type: ProjectDocuments, props: props, children: [] })
     errorText = textOf(nodes, []).join(' ')
     assert.equal(errorText.indexOf('发布检查清单') >= 0, true)
     assert.equal(errorText.indexOf('search failed') >= 0, false)
@@ -3463,6 +3347,8 @@ test('documents full scope debounces the host search and retries failures', asyn
 test('requirement list toggles favorites and filters favorites only', async function () {
   const originalFetch = globalThis.fetch
   const calls = []
+  let finishFavorite: (value: Response) => void
+  const favoriteResponse = new Promise<Response>(resolve => { finishFavorite = resolve })
   let reloads = 0
   const workspace = Object.assign({}, stateData.workspaces[0], {
     requirements: [
@@ -3475,20 +3361,20 @@ test('requirement list toggles favorites and filters favorites only', async func
   })
   anyGlobal.fetch = async function (url, init) {
     calls.push({ url: String(url), method: init.method, body: init.body ? JSON.parse(init.body) : null })
-    return { status: 200, json: async function () { return { ok: true, value: { requirement: summary } } } }
+    return favoriteResponse
   }
   try {
-    resetListState('requirements')
-    uiStore.set({
+    act(() => resetListState('requirements'))
+    act(() => uiStore.set({
       view: 'project', selectedProjectId: 'w1', selectedRequirement: null,
       activeTab: 'requirements',
-    })
-    instances.clear()
+    }))
+    cleanup()
     const props = requirementListProps({
       workspace: workspace,
       onReloadState: function () { reloads += 1; return Promise.resolve() },
     })
-    let nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    let nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     const favButton = nodes.find(function (node) {
       return node.type === 'button' && node.props.title === 'project.requirements.unfavorite'
     })
@@ -3499,34 +3385,37 @@ test('requirement list toggles favorites and filters favorites only', async func
     assert.equal(Boolean(addButton), true)
     assert.equal(favButton.props['aria-pressed'], true)
     assert.equal(addButton.props['aria-pressed'], false)
-    addButton.props.onClick({ stopPropagation: noop })
-    nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    await addButton.props.onClick({ stopPropagation: noop })
+    nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     // The pending row cannot be toggled twice.
     const busyButton = nodes.find(function (node) {
       return node.type === 'button' && node.props.title === 'project.requirements.favorite'
     })
     assert.equal(busyButton.props.disabled, true)
-    await flushMicrotasks()
+    await busyButton.props.onClick({ stopPropagation: noop })
     assert.equal(calls.length, 1)
     assert.equal(calls[0].method, 'POST')
     assert.equal(calls[0].url.indexOf('/requirement/favorite') > 0, true)
     assert.deepEqual(calls[0].body, { workspaceId: 'w1', id: 'REQ-2', favorite: true })
+    assert.equal(reloads, 0)
+    await act(async () => { finishFavorite(reply({ requirement: summary })) })
     assert.equal(reloads, 1)
 
     // The favorites-only toggle sits next to the status filter and filters the list.
-    nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     assert.equal(dataRows(nodes).length, 2)
     const favoriteOnly = findButton(nodes, 'project.requirements.favoriteOnly')
     assert.equal(Boolean(favoriteOnly), true)
     assert.equal(favoriteOnly.props['aria-pressed'], false)
     favoriteOnly.props.onClick()
     assert.equal(uiStore.state.lists.requirements.favoriteOnly, true)
-    nodes = render({ type: ProjectRequirements, props: props, children: [] })
+    nodes = await render({ type: ProjectRequirements, props: props, children: [] })
     assert.equal(dataRows(nodes).length, 1)
     assert.equal(textOf(dataRows(nodes)[0], []).join(' ').indexOf('Sample') >= 0, true)
   } finally {
+    await act(async () => { finishFavorite(reply({ requirement: summary })) })
     anyGlobal.fetch = originalFetch
-    resetListState('requirements')
+    act(() => resetListState('requirements'))
   }
 })
 test('requirement detail header toggles the favorite through the same host api', async function () {
@@ -3544,12 +3433,12 @@ test('requirement detail header toggles the favorite through the same host api',
     }
   }
   try {
-    instances.clear()
+    cleanup()
     const data = {
       requirement: Object.assign({}, summary, { favorite: false }),
       body: '# Title\n\nBody',
     }
-    const favNodes = render({
+    const favNodes = await render({
       type: DetailView,
       props: {
         t: t, selected: { workspaceId: 'w1', id: 'REQ-1' }, summary: summary,

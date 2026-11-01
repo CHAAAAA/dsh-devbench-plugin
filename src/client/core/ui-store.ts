@@ -46,7 +46,7 @@ export const uiStore = {
     selection: cloneEmpty(EMPTY_SELECTION),
     lists: cloneEmpty(EMPTY_LISTS),
   }),
-  listeners: new Set<any>(),
+  listeners: new Set<() => void>(),
   set(patch) {
     uiStore.state = Object.assign({}, uiStore.state, patch, {
       revision: uiStore.state.revision + 1,

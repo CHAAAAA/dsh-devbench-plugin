@@ -1,3 +1,5 @@
+import type { HostContext } from '../context.js'
+import type { ConfigDto, Dashboard, WeeklyReport } from '../../shared/api-types.js'
 /** Home dashboard data and deterministic local weekly reports. */
 import path from 'node:path'
 import { DEFAULT_WEEKLY_REPORT_DAYS } from '../constants.js'
@@ -73,7 +75,7 @@ function workspaceTitle(workspace) {
 }
 
 /** Build the workbench home payload: projects, recent tasks, and running requirements. */
-export async function buildDashboard(ctx, config) {
+export async function buildDashboard(ctx: HostContext, config: ConfigDto): Promise<Dashboard> {
   const generatedAt = new Date()
   const weekStart = new Date(generatedAt.getTime() - DASHBOARD_WINDOW_DAYS * DAY_MS)
   const weekStartIso = weekStart.toISOString()
@@ -359,7 +361,7 @@ function renderWeeklyMarkdown(input) {
 }
 
 /** Build a deterministic Chinese Markdown weekly report from local repository data. */
-export async function buildWeeklyReport(ctx, config, options: any = {}) {
+export async function buildWeeklyReport(ctx: HostContext, config: ConfigDto, options: { days?: number } = {}): Promise<WeeklyReport> {
   const days = reportDays(options.days)
   const generatedAt = new Date()
   const start = new Date(generatedAt.getTime() - days * DAY_MS)

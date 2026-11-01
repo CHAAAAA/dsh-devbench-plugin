@@ -1,12 +1,11 @@
 /**
  * MCP management page and home overview panel (REQ-20261029-002).
  *
- * Renders with a tiny fake React (the same hook-index seeding approach as
- * test/client/render-smoke.test.ts) and covers the pure form/value helpers.
+ * Uses React DOM and API fixtures to cover page behavior and pure form/value helpers.
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { initRuntime } from '../../src/client/runtime.js'
+import { render, nodes, cleanup, textOf, findButton, mockApi, flushAsyncWork } from './helpers.js'
 import { MCP_SECRET_MASK } from '../../src/shared/protocol.js'
 import { zh, en } from '../../src/client/i18n/index.js'
 import {
@@ -16,101 +15,19 @@ import {
   summarizeMcpData,
 } from '../../src/client/views/mcp.js'
 
-const anyGlobal: any = globalThis
-
-const instances = new Map()
-let current = null
-let hookIndex = 0
-function slot(init) {
-  const index = hookIndex++
-  if (!(index in current.hooks)) current.hooks[index] = init()
-  return current.hooks[index]
-}
-const React = {
-  Fragment: 'Fragment',
-  createElement(type, props) {
-    return { type: type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) }
-  },
-  useState(initial) {
-    const item = slot(function () { return { value: initial } })
-    function setValue(next) {
-      item.value = typeof next === 'function' ? next(item.value) : next
-    }
-    return [item.value, setValue]
-  },
-  useRef(initial) { return slot(function () { return { current: initial } }) },
-  useEffect(fn, deps) { slot(function () { return { fn: fn, deps: deps } }) },
-}
-initRuntime(function () { return React })
-function renderNode(node, path, out) {
-  if (node === null || node === undefined || node === false || node === true) return
-  if (Array.isArray(node)) {
-    node.forEach(function (child, index) { renderNode(child, path + '.' + index, out) })
-    return
-  }
-  if (typeof node !== 'object') return
-  if (typeof node.type === 'function') {
-    const key = path + ':' + (node.props && node.props.key ? node.props.key : '')
-    let instance = instances.get(key)
-    if (!instance) { instance = { hooks: [] }; instances.set(key, instance) }
-    const merged = Object.assign({}, node.props)
-    if (node.children.length === 1) merged.children = node.children[0]
-    else if (node.children.length > 1) merged.children = node.children
-    const previous = current
-    current = instance
-    hookIndex = 0
-    const rendered = node.type(merged)
-    current = previous
-    renderNode(rendered, key, out)
-    return
-  }
-  out.push(node)
-  if (!Array.isArray(node.children)) return
-  node.children.forEach(function (child, index) { renderNode(child, path + '.' + index, out) })
-}
-function render(type, props) {
-  const out = []
-  renderNode({ type: type, props: props || {}, children: [] }, 'root', out)
-  return out
-}
-function textOf(value, out) {
-  const list = out || []
-  if (Array.isArray(value)) {
-    value.forEach(function (item) { textOf(item, list) })
-    return list
-  }
-  if (typeof value === 'string') { list.push(value); return list }
-  if (value && typeof value === 'object') {
-    list.push.apply(list, textOf(value.children, []))
-  }
-  return list
-}
-function text(nodes) { return textOf(nodes, []).join(' ') }
+function text(values) { return textOf(values, []).join(' ') }
 function isClass(node, name) {
-  return node.props && String(node.props.className || '').split(/\s+/).indexOf(name) >= 0
+  return String(node.props.className || '').split(/\s+/).includes(name)
 }
-function buttonWithText(nodes, label) {
-  return nodes.filter(function (node) {
-    return node.type === 'button' && textOf(node, []).join(' ').indexOf(label) >= 0
-  })
+function buttonWithText(values, label) {
+  return values.filter(node => node.type === 'button' && text(node).includes(label))
 }
 const noop = function () {}
 const t = function (key) { return key }
-function seed(hooks?) {
-  instances.clear()
-  const instance = { hooks: hooks || [] }
-  instances.set('root:', instance)
-  return instance
-}
-function seedPage(options) {
-  const opts = options || {}
-  const hooks = []
-  hooks[0] = { value: { loading: opts.loading === true, error: opts.error || '', data: opts.data === undefined ? listData : opts.data } }
-  hooks[1] = { value: opts.expandedId || '' }
-  hooks[2] = { value: opts.busyId || '' }
-  hooks[3] = { value: opts.editor || null }
-  hooks[4] = { current: 0 }
-  return seed(hooks)
+async function loadPage(data: unknown = listData, component = McpView, props = {}) {
+  cleanup()
+  mockApi(() => data)
+  return render({ type: component, props: { t, showToast: noop, ...props } })
 }
 
 const profile = {
@@ -326,198 +243,146 @@ test('MCP i18n keys exist in both languages', function () {
   })
 })
 
-test('MCP page renders the loading state first', function () {
-  seed()
-  const nodes = render(McpView, { t: t })
-  const pageText = text(nodes)
-  assert.equal(pageText.indexOf('mcp.title') >= 0, true)
-  assert.equal(pageText.indexOf('mcp.loading') >= 0, true)
-  assert.equal(buttonWithText(nodes, 'mcp.add').length, 0)
-  assert.equal(buttonWithText(nodes, 'mcp.refresh').length, 1)
+test('MCP page renders the loading state first', async function () {
+  let finish
+  mockApi(() => new Promise(resolve => { finish = resolve }))
+  const initial = await render({ type: McpView, props: { t } })
+  assert.ok(text(initial).includes('mcp.title'))
+  assert.ok(text(initial).includes('mcp.loading'))
+  assert.equal(buttonWithText(initial, 'mcp.add').length, 0)
+  assert.equal(buttonWithText(initial, 'mcp.refresh').length, 1)
+  finish(listData)
+  await flushAsyncWork()
 })
-
-async function flushAsyncWork() {
-  for (let round = 0; round < 32; round += 1) await Promise.resolve()
-}
 
 test('MCP page loads its data through the initial effect', async function () {
-  const previousFetch = globalThis.fetch
   const calls = []
-  anyGlobal.fetch = function (url) {
-    calls.push(String(url))
-    return Promise.resolve({
-      json: function () { return Promise.resolve({ ok: true, value: listData }) },
-    })
-  }
-  try {
-    const instance = seedPage({ loading: true, data: null })
-    const initial = render(McpView, { t: t, showToast: noop })
-    assert.equal(text(initial).includes('mcp.loading'), true)
-    assert.equal(typeof instance.hooks[5].fn, 'function')
-    instance.hooks[5].fn()
-    await flushAsyncWork()
-    assert.equal(calls.some(function (url) { return url.indexOf('/mcp') >= 0 }), true)
-    const loaded = render(McpView, { t: t, showToast: noop })
-    assert.equal(loaded.some(function (node) { return isClass(node, 'devbench-mcp-row') }), true)
-  } finally {
-    anyGlobal.fetch = previousFetch
-  }
+  let finish
+  mockApi(url => {
+    calls.push(url.pathname)
+    return new Promise(resolve => { finish = resolve })
+  })
+  const initial = await render({ type: McpView, props: { t, showToast: noop } })
+  assert.ok(text(initial).includes('mcp.loading'))
+  assert.deepEqual(calls, ['/dsh-devbench/api/mcp'])
+  finish(listData)
+  await flushAsyncWork()
+  assert.ok(nodes().some(node => isClass(node, 'devbench-mcp-row')))
 })
 
-test('MCP page lists servers with transport, phase and row actions', function () {
-  seedPage({})
-  const nodes = render(McpView, { t: t, showToast: noop })
-  const pageText = text(nodes)
-  ;['mcp.title', 'mcp.add', 'mcp.refresh', 'db-metadata', 'remote-mcp',
+test('MCP page lists servers with transport, phase and row actions', async function () {
+  const values = await loadPage()
+  const pageText = text(values)
+  for (const label of ['mcp.title', 'mcp.add', 'mcp.refresh', 'db-metadata', 'remote-mcp',
     'mcp.transport.stdio', 'mcp.transport.http', 'mcp.phase.active', 'mcp.phase.failed',
-    'mcp.tools', 'mcp.action.view', 'mcp.action.edit'].forEach(function (label) {
-    assert.equal(pageText.indexOf(label) >= 0, true, 'missing ' + label)
-  })
-  assert.equal(buttonWithText(nodes, 'mcp.action.delete').length, 1)
-  const editButtons = buttonWithText(nodes, 'mcp.action.edit')
-  assert.equal(editButtons.length, 2)
-  const bundleEdit = editButtons.find(function (node) { return node.props.disabled === true })
-  assert.equal(Boolean(bundleEdit), true)
-  assert.equal(bundleEdit.props.title, 'mcp.readOnly.overlay')
-  const disableOnly = nodes.find(function (node) {
-    return node.props && node.props.title === 'mcp.action.disableOnlyHint'
-  })
-  assert.equal(Boolean(disableOnly), true)
+    'mcp.tools', 'mcp.action.view', 'mcp.action.edit']) assert.ok(pageText.includes(label), label)
+  assert.equal(buttonWithText(values, 'mcp.action.delete').length, 1)
+  const edits = buttonWithText(values, 'mcp.action.edit')
+  assert.equal(edits.length, 2)
+  assert.equal(edits.find(node => node.props.disabled).props.title, 'mcp.readOnly.overlay')
+  const disableOnly = values.find(node => node.props.title === 'mcp.action.disableOnlyHint')
+  assert.ok(disableOnly)
   assert.equal(typeof disableOnly.props.onClick, 'function')
-  assert.equal(nodes.some(function (node) { return isClass(node, 'devbench-mcp-row') }), true)
+  assert.ok(values.some(node => isClass(node, 'devbench-mcp-row')))
 })
 
-test('MCP page renders the expanded config detail', function () {
-  seedPage({ expandedId: 'db-metadata' })
-  const nodes = render(McpView, { t: t, showToast: noop })
-  const pageText = text(nodes)
-  ;['mcp.action.hide', 'mcp.detail.id', 'mcp.detail.source', 'mcp.detail.patch',
-    'mcp.detail.tools', 'mcp.detail.config', 'mcp.source.profile', profile.patchPath].forEach(function (label) {
-    assert.equal(pageText.indexOf(label) >= 0, true, 'missing ' + label)
-  })
-  assert.equal(nodes.some(function (node) { return isClass(node, 'devbench-mcp-config') }), true)
-  const config = nodes.find(function (node) { return isClass(node, 'devbench-mcp-config') })
-  assert.equal(text(config).indexOf('/opt/mcp.js') >= 0, true)
+test('MCP page renders the expanded config detail', async function () {
+  const values = await loadPage()
+  await buttonWithText(values, 'mcp.action.view')[0].props.onClick()
+  for (const label of ['mcp.action.hide', 'mcp.detail.id', 'mcp.detail.source', 'mcp.detail.patch',
+    'mcp.detail.tools', 'mcp.detail.config', 'mcp.source.profile', profile.patchPath]) {
+    assert.ok(text(nodes()).includes(label), label)
+  }
+  const config = nodes().find(node => isClass(node, 'devbench-mcp-config'))
+  assert.ok(config)
+  assert.ok(text(config).includes('/opt/mcp.js'))
 })
 
-test('MCP page shows the unsupported-profile empty state without write actions', function () {
-  seedPage({
-    data: { profile: null, available: false, canWrite: false, hotReload: true, servers: [] },
-  })
-  const nodes = render(McpView, { t: t, showToast: noop })
-  const pageText = text(nodes)
-  assert.equal(pageText.indexOf('mcp.unavailable') >= 0, true)
-  assert.equal(pageText.indexOf('mcp.readonly') >= 0, true)
-  assert.equal(buttonWithText(nodes, 'mcp.add').length, 0)
+test('MCP page shows the unsupported-profile empty state without write actions', async function () {
+  const values = await loadPage({ profile: null, available: false, canWrite: false, hotReload: true, servers: [] })
+  assert.ok(text(values).includes('mcp.unavailable'))
+  assert.ok(text(values).includes('mcp.readonly'))
+  assert.equal(buttonWithText(values, 'mcp.add').length, 0)
 })
 
-test('MCP page surfaces a host patch error as a banner', function () {
-  const data = Object.assign({}, listData, { patchError: 'unsupported patch format' })
-  seedPage({ data: data })
-  const nodes = render(McpView, { t: t, showToast: noop })
-  assert.equal(text(nodes).indexOf('unsupported patch format') >= 0, true)
+test('MCP page surfaces a host patch error as a banner', async function () {
+  const values = await loadPage({ ...listData, patchError: 'unsupported patch format' })
+  assert.ok(text(values).includes('unsupported patch format'))
 })
 
-test('MCP editor renders the stdio form fields', function () {
-  seedPage({ editor: serverToForm(stdioServer) })
-  const nodes = render(McpView, { t: t, showToast: noop })
-  const pageText = text(nodes)
-  ;['mcp.form.editTitle', 'mcp.form.name', 'mcp.form.transport', 'mcp.form.command',
+test('MCP editor renders the stdio form fields', async function () {
+  const values = await loadPage()
+  await buttonWithText(values, 'mcp.action.edit')[0].props.onClick()
+  for (const label of ['mcp.form.editTitle', 'mcp.form.name', 'mcp.form.transport', 'mcp.form.command',
     'mcp.form.args', 'mcp.form.cwd', 'mcp.form.env', 'mcp.form.advanced',
-    'mcp.form.failOnStartupError', 'mcp.form.timeout', 'mcp.form.save', 'mcp.form.cancel'].forEach(
-    function (label) {
-      assert.equal(pageText.indexOf(label) >= 0, true, 'missing ' + label)
-    })
-  const nameInput = nodes.find(function (node) {
-    return node.type === 'input' && node.props.value === 'db-metadata'
-  })
-  assert.equal(Boolean(nameInput), true)
-  const select = nodes.find(function (node) { return node.type === 'select' })
-  assert.equal(select.props.value, 'stdio')
-  const options = nodes.filter(function (node) { return node.type === 'option' })
-  assert.deepEqual(options.map(function (node) { return node.props.value }), ['stdio', 'streamable-http'])
-  const maskedEnv = nodes.find(function (node) {
-    return node.type === 'textarea' && String(node.props.value).indexOf(MCP_SECRET_MASK) >= 0
-  })
-  assert.equal(Boolean(maskedEnv), true)
-  assert.equal(buttonWithText(nodes, 'mcp.form.cancel').length, 1)
+    'mcp.form.failOnStartupError', 'mcp.form.timeout', 'mcp.form.save', 'mcp.form.cancel']) {
+    assert.ok(text(nodes()).includes(label), label)
+  }
+  assert.ok(nodes().some(node => node.type === 'input' && node.props.value === 'db-metadata'))
+  assert.equal(nodes().find(node => node.type === 'select').props.value, 'stdio')
+  assert.deepEqual(nodes().filter(node => node.type === 'option').map(node => node.props.value), ['stdio', 'streamable-http'])
+  assert.ok(nodes().some(node => node.type === 'textarea' && String(node.props.value).includes(MCP_SECRET_MASK)))
+  assert.equal(buttonWithText(nodes(), 'mcp.form.cancel').length, 1)
 })
 
-test('MCP editor renders the http form fields', function () {
-  seedPage({ editor: serverToForm(httpServer) })
-  const nodes = render(McpView, { t: t, showToast: noop })
-  const pageText = text(nodes)
-  ;['mcp.form.url', 'mcp.form.headers', 'mcp.form.headersHint'].forEach(function (label) {
-    assert.equal(pageText.indexOf(label) >= 0, true, 'missing ' + label)
-  })
-  assert.equal(pageText.indexOf('mcp.form.command') >= 0, false)
-  assert.equal(nodes.some(function (node) {
-    return node.type === 'input' && node.props.value === 'https://example.com/mcp'
-  }), true)
+test('MCP editor renders the http form fields', async function () {
+  const data = { ...listData, servers: [{ ...httpServer, canEdit: true }] }
+  const values = await loadPage(data)
+  await findButton(values, 'mcp.action.edit').props.onClick()
+  for (const label of ['mcp.form.url', 'mcp.form.headers', 'mcp.form.headersHint']) assert.ok(text(nodes()).includes(label), label)
+  assert.equal(text(nodes()).includes('mcp.form.command'), false)
+  assert.ok(nodes().some(node => node.type === 'input' && node.props.value === 'https://example.com/mcp'))
 })
 
-test('MCP editor renders the create title', function () {
-  seedPage({ editor: emptyMcpForm('create') })
-  const nodes = render(McpView, { t: t, showToast: noop })
-  assert.equal(text(nodes).indexOf('mcp.form.createTitle') >= 0, true)
+test('MCP editor renders the create title', async function () {
+  const values = await loadPage()
+  await findButton(values, 'mcp.add').props.onClick()
+  assert.ok(text(nodes()).includes('mcp.form.createTitle'))
 })
 
-test('home MCP panel renders servers, summary and the manage action', function () {
-  seed([{ value: { loading: false, error: '', data: listData } }])
+test('home MCP panel renders servers, summary and the manage action', async function () {
   let opened = false
-  const nodes = render(HomeMcpPanel, { t: t, onOpenMcp: function () { opened = true } })
-  const panelText = text(nodes)
-  ;['home.mcp', 'home.mcp.summary', 'db-metadata', 'remote-mcp',
-    'mcp.transport.stdio', 'mcp.transport.http'].forEach(function (label) {
-    assert.equal(panelText.indexOf(label) >= 0, true, 'missing ' + label)
-  })
-  const manage = buttonWithText(nodes, 'home.mcp.manage')
-  assert.equal(manage.length, 1)
-  manage[0].props.onClick()
+  const values = await loadPage(listData, HomeMcpPanel, { onOpenMcp() { opened = true } })
+  for (const label of ['home.mcp', 'home.mcp.summary', 'db-metadata', 'remote-mcp', 'mcp.transport.stdio', 'mcp.transport.http']) {
+    assert.ok(text(values).includes(label), label)
+  }
+  await findButton(values, 'home.mcp.manage').props.onClick()
   assert.equal(opened, true)
-  assert.equal(nodes.filter(function (node) { return isClass(node, 'devbench-mcp-home-row') }).length, 2)
+  assert.equal(values.filter(node => isClass(node, 'devbench-mcp-home-row')).length, 2)
 })
 
 test('home MCP panel loads through its initial effect', async function () {
-  const previousFetch = globalThis.fetch
   const calls = []
-  anyGlobal.fetch = function (url) {
-    calls.push(String(url))
-    return Promise.resolve({
-      json: function () { return Promise.resolve({ ok: true, value: listData }) },
-    })
-  }
-  try {
-    const instance = seed()
-    const loading = render(HomeMcpPanel, { t: t })
-    assert.equal(text(loading).indexOf('home.mcp.loading') >= 0, true)
-    assert.equal(typeof instance.hooks[1].fn, 'function')
-    instance.hooks[1].fn()
-    await flushAsyncWork()
-    assert.equal(calls.some(function (url) { return url.indexOf('/mcp') >= 0 }), true)
-    const loaded = render(HomeMcpPanel, { t: t })
-    assert.equal(text(loaded).indexOf('db-metadata') >= 0, true)
-    assert.equal(loaded.filter(function (node) { return isClass(node, 'devbench-mcp-home-row') }).length, 2)
-  } finally {
-    anyGlobal.fetch = previousFetch
-  }
+  let finish
+  mockApi(url => {
+    calls.push(url.pathname)
+    return new Promise(resolve => { finish = resolve })
+  })
+  const initial = await render({ type: HomeMcpPanel, props: { t } })
+  assert.ok(text(initial).includes('home.mcp.loading'))
+  assert.deepEqual(calls, ['/dsh-devbench/api/mcp'])
+  finish(listData)
+  await flushAsyncWork()
+  assert.ok(text(nodes()).includes('db-metadata'))
+  assert.equal(nodes().filter(node => isClass(node, 'devbench-mcp-home-row')).length, 2)
 })
 
-test('home MCP panel shows the loading, error and empty states', function () {
-  seed()
-  assert.equal(text(render(HomeMcpPanel, { t: t })).indexOf('home.mcp.loading') >= 0, true)
-  seed([{ value: { loading: false, error: 'boom', data: null } }])
-  const errorNodes = render(HomeMcpPanel, { t: t })
-  assert.equal(text(errorNodes).indexOf('home.mcp.error') >= 0, true)
-  assert.equal(render(HomeMcpPanel, { t: t }).length > 0, true)
-  seed([{ value: { loading: false, error: '', data: { available: true, servers: [] } } }])
-  assert.equal(text(render(HomeMcpPanel, { t: t })).indexOf('home.mcp.empty') >= 0, true)
-  seed([{ value: { loading: false, error: '', data: { available: false, servers: [] } } }])
-  const unavailableText = text(render(HomeMcpPanel, { t: t }))
-  assert.equal(unavailableText.indexOf('home.mcp.unavailable') >= 0, true)
-  assert.equal(unavailableText.indexOf('home.mcp.summary') >= 0, false)
-  // Without onOpenMcp (e.g. a view rendered outside the workbench) no button is rendered.
-  seed([{ value: { loading: false, error: '', data: listData } }])
-  const noAction = render(HomeMcpPanel, { t: t })
+test('home MCP panel shows the loading, error and empty states', async function () {
+  let finish
+  mockApi(() => new Promise(resolve => { finish = resolve }))
+  const loading = await render({ type: HomeMcpPanel, props: { t } })
+  assert.ok(text(loading).includes('home.mcp.loading'))
+  finish(null)
+  await flushAsyncWork()
+  cleanup()
+  mockApi(() => { throw new Error('boom') })
+  const failed = await render({ type: HomeMcpPanel, props: { t } })
+  assert.ok(text(failed).includes('home.mcp.error'))
+  assert.ok(failed.length > 0)
+  assert.ok(text(await loadPage({ available: true, servers: [] }, HomeMcpPanel)).includes('home.mcp.empty'))
+  const unavailable = await loadPage({ available: false, servers: [] }, HomeMcpPanel)
+  assert.ok(text(unavailable).includes('home.mcp.unavailable'))
+  assert.equal(text(unavailable).includes('home.mcp.summary'), false)
+  const noAction = await loadPage(listData, HomeMcpPanel)
   assert.equal(buttonWithText(noAction, 'home.mcp.manage').length, 0)
 })

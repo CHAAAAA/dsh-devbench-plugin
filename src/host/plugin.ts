@@ -4,16 +4,17 @@ import { registerRequirementTools } from './tools/requirement-tools.js'
 import { registerProjectTools } from './tools/project-tools.js'
 import { recoverInterruptedTasks } from './storage/tasks.js'
 import { handleHttp } from './http/router.js'
+import type { HostContext } from './context.js'
 
 export const inject = ['tools', 'webServer', 'workspaceRegistry']
 
-let taskRecovery = Promise.resolve()
+let taskRecovery: Promise<number | void> = Promise.resolve()
 
-export function waitForTaskRecovery() {
+export function waitForTaskRecovery(): Promise<number | void> {
   return taskRecovery
 }
 
-export function apply(ctx) {
+export function apply(ctx: HostContext): void {
   ctx.effect(function () {
     return ctx.webServer.register({
       kind: 'prefix',
@@ -33,8 +34,10 @@ export function apply(ctx) {
   }, 'devbench-manager: project agent tools')
 
   ctx.effect(function () {
-    taskRecovery = recoverInterruptedTasks().catch(function (error) {
-      ctx.logger?.warn?.('devbench-manager task recovery: ' + String(error && error.message ? error.message : error))
+    taskRecovery = recoverInterruptedTasks().catch(function (error: unknown) {
+      const message = error && typeof error === 'object' && 'message' in error && error.message
+        ? error.message : error
+      ctx.logger?.warn?.('devbench-manager task recovery: ' + String(message))
     })
     return function () {}
   }, 'devbench-manager: project task recovery')

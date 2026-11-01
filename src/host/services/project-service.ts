@@ -1,3 +1,6 @@
+import type { HostContext } from '../context.js'
+import type { TaskRecord } from '../storage/tasks.js'
+import type * as Api from '../../shared/api-types.js'
 import { withKeyLock } from '../shared/atomic.js'
 import { DEFAULT_COMMIT_PAGE_SIZE, MAX_COMMIT_PAGE_SIZE } from '../constants.js'
 import { apiError } from '../errors.js'
@@ -107,9 +110,9 @@ function commitPageOption(value, fallback, min, max) {
   return number
 }
 
-export async function projectOverview(ctx, workspaceId) {
+export async function projectOverview(ctx: HostContext, workspaceId: string): Promise<Api.ProjectOverview> {
   const workspace = getRegisteredWorkspace(ctx, workspaceId)
-  const project: any = await workspaceProjectDto(workspace)
+  const project = await workspaceProjectDto(workspace)
   const git = await projectGitOverview(workspace.path || '')
   let reviews = []
   let commits = []
@@ -130,7 +133,7 @@ export async function projectOverview(ctx, workspaceId) {
 }
 
 /** Paginated commit history for a managed project. */
-export async function listProjectCommits(ctx, workspaceId, options: any = {}) {
+export async function listProjectCommits(ctx: HostContext, workspaceId: string, options: { offset?: string | number; limit?: string | number } = {}): Promise<Api.ProjectCommits> {
   const current = await requireProject(ctx, workspaceId)
   const query = options || {}
   const offset = commitPageOption(query.offset, 0, 0, MAX_COMMIT_OFFSET)
@@ -161,7 +164,7 @@ function reviewMatchesCommit(review, hash) {
  * Commit detail for the project commits tab: metadata, every changed file with
  * its diff, the review file (if any), and requirements associated with the commit.
  */
-export async function projectCommitDetail(ctx, workspaceId, commitValue) {
+export async function projectCommitDetail(ctx: HostContext, workspaceId: string, commitValue: string): Promise<Api.ProjectCommitDetail> {
   const current = await requireProject(ctx, workspaceId)
   const detail = await showProjectCommitDetail(current.canonicalPath, commitValue)
   if (detail === null) throw apiError(404, 'commit-not-found', messages.projectCommitNotFound)
@@ -189,7 +192,7 @@ export async function projectCommitDetail(ctx, workspaceId, commitValue) {
   }
 }
 
-export async function initializeProjectGit(ctx, workspaceId) {
+export async function initializeProjectGit(ctx: HostContext, workspaceId: string): Promise<{ initialized: boolean; project: Api.ProjectDto; git: Api.ProjectGit }> {
   const current = await requireProject(ctx, workspaceId)
   const result = await gitInit(current.canonicalPath)
   await ensureReviewsDirectory(current.canonicalPath)
@@ -201,7 +204,7 @@ export async function initializeProjectGit(ctx, workspaceId) {
   }
 }
 
-export function previewProjectCommit(ctx, workspaceId) {
+export function previewProjectCommit(ctx: HostContext, workspaceId: string): Promise<{ task: Api.TaskDto }> {
   return withKeyLock('project-preview:' + workspaceId, async function () {
     const current = await requireProject(ctx, workspaceId)
     const config = await readConfig()
@@ -251,7 +254,7 @@ export function validateCommitMessage(value, requireChinese = true) {
   return text
 }
 
-export function confirmProjectCommit(ctx, workspaceId, taskId, messageInput) {
+export function confirmProjectCommit(ctx: HostContext, workspaceId: string, taskId: string, messageInput?: string): Promise<Api.CommitConfirmation> {
   return withProjectTaskLock(taskId, async function () {
     const task = await findTaskRecord(taskId, workspaceId)
     if (task === null) throw apiError(404, 'task-not-found', messages.projectTaskNotFound)
@@ -320,7 +323,7 @@ export function confirmProjectCommit(ctx, workspaceId, taskId, messageInput) {
   })
 }
 
-export function startProjectReview(ctx, workspaceId, commitValue) {
+export function startProjectReview(ctx: HostContext, workspaceId: string, commitValue: string): Promise<{ task: Api.TaskDto; alreadyReviewed?: boolean }> {
   return withKeyLock('project-review:' + workspaceId, async function () {
   const current = await requireProject(ctx, workspaceId)
   const root = current.canonicalPath
@@ -339,7 +342,7 @@ export function startProjectReview(ctx, workspaceId, commitValue) {
   })
   if (existing !== undefined) {
     const recorded = same.find(function (task) { return task.reviewFile === existing.name })
-    const task = recorded || {
+    const task: TaskRecord = recorded || {
       id: existing.task || 'review-file',
       kind: 'review',
       status: 'succeeded',
@@ -404,7 +407,7 @@ async function assertNoActiveUncommittedReview(workspaceId, excludeTaskId: any =
  * 创建 reviewTarget='uncommitted' 的评审任务。该任务没有提交哈希，
  * 同一工作区同时只允许一个进行中的未提交评审。
  */
-export function startUncommittedReview(ctx, workspaceId) {
+export function startUncommittedReview(ctx: HostContext, workspaceId: string): Promise<{ task: Api.TaskDto }> {
   return withKeyLock('project-review:' + workspaceId, async function () {
     const current = await requireProject(ctx, workspaceId)
     const root = current.canonicalPath
@@ -436,7 +439,7 @@ export function startUncommittedReview(ctx, workspaceId) {
   })
 }
 
-export async function listProjectTasks(ctx, workspaceId) {
+export async function listProjectTasks(ctx: HostContext, workspaceId: string): Promise<{ tasks: Api.TaskDto[] }> {
   const workspace = getRegisteredWorkspace(ctx, workspaceId)
   const tasks = await readTasksForApi()
   const requirements = await projectRequirementSummaries(workspaceId)
@@ -445,7 +448,7 @@ export async function listProjectTasks(ctx, workspaceId) {
   }
 }
 
-export function cancelProjectTask(ctx, workspaceId, taskId) {
+export function cancelProjectTask(ctx: HostContext, workspaceId: string, taskId: string): Promise<{ task: Api.TaskDto }> {
   return withProjectTaskLock(taskId, async function () {
     const task = await findTaskRecord(taskId, workspaceId)
     if (task === null) throw apiError(404, 'task-not-found', messages.projectTaskNotFound)
@@ -518,7 +521,7 @@ function retryUncommittedReviewTask(ctx, workspaceId, taskId) {
   })
 }
 
-export function retryProjectTask(ctx, workspaceId, taskId) {
+export function retryProjectTask(ctx: HostContext, workspaceId: string, taskId: string): Promise<{ task: Api.TaskDto }> {
   return withProjectTaskLock(taskId, async function () {
     const task = await findTaskRecord(taskId, workspaceId)
     if (task === null) throw apiError(404, 'task-not-found', messages.projectTaskNotFound)

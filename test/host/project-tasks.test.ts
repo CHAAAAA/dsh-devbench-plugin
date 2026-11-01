@@ -69,7 +69,7 @@ test('state counts queued, running and awaiting tasks only', async function () {
   try {
     const workspace = await makeWorkspace(harness.tempRoot, 'w1', 'Workspace 1')
     harness.addWorkspace(workspace)
-    for (const status of ['queued', 'running', 'awaiting_confirmation', 'succeeded', 'failed', 'cancelled']) {
+    for (const status of ['queued', 'running', 'awaiting_confirmation', 'succeeded', 'failed', 'cancelled'] as const) {
       await createTask({
         kind: 'review',
         status,

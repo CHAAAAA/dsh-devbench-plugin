@@ -1,5 +1,8 @@
 /** Project tasks: master-detail with status/kind filters; selection persists in uiStore. */
 import { h, useEffect } from '../../runtime.js'
+import type { ReactElement } from 'react'
+import type { Translate } from '../../runtime.js'
+import type { TaskDto } from '../../../shared/api-types.js'
 import { useUiState, setSelection, setListState } from '../../core/ui-store.js'
 import { ListFooter, useListPage } from '../../ui/list-page.js'
 import {
@@ -54,7 +57,11 @@ function metaRow(key, label, value, options?) {
     h('span', { className: 'devbench-hint' }, label),
     h('span', { className: opts.mono === true ? 'devbench-mono' : '', style: style }, value))
 }
-export function ProjectTasks(props) {
+export function ProjectTasks(props: {
+  t: Translate; tasks: TaskDto[]; busyKey?: string
+  onOpenSession?: (sessionId: string) => void
+  onCancel?: (task: TaskDto) => void; onRetry?: (task: TaskDto) => void
+}): ReactElement {
   const t = props.t
   const tasks = Array.isArray(props.tasks) ? props.tasks : []
   const ui = useUiState()
@@ -198,6 +205,7 @@ export function ProjectTasks(props) {
     const footChildren = []
     if (taskCanCancel(activeTask)) {
       footChildren.push(h('button', {
+        key: 'cancel',
         className: 'devbench-btn ghost danger',
         disabled: props.busyKey === cancelKey,
         onClick() { cancelTask(activeTask) },
@@ -205,6 +213,7 @@ export function ProjectTasks(props) {
     }
     if (taskCanRetry(activeTask)) {
       footChildren.push(h('button', {
+        key: 'retry',
         className: 'devbench-btn ghost',
         disabled: props.busyKey === retryKey,
         onClick() { retryTask(activeTask) },

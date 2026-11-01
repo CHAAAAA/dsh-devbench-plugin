@@ -4,7 +4,7 @@ import { Modal } from './common.js'
 
 let current = null
 let resolver = null
-const listeners = new Set<any>()
+const listeners = new Set<() => void>()
 
 function emit() {
   listeners.forEach(function (listener) { listener() })

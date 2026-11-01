@@ -1,3 +1,5 @@
+import type { HostContext } from '../context.js'
+import type { WorkspaceChanges, CommitResult, PullResult, PushResult } from '../../shared/api-types.js'
 /**
  * Working-tree Git operations for the project commits tab: read the current
  * workspace state, commit manually, pull (fast-forward only) and push the
@@ -90,7 +92,7 @@ async function assertProjectWorkspaceIdle(workspaceId, root) {
 }
 
 /** Current uncommitted changes of the project working tree for the commits tab. */
-export async function readProjectWorkspaceState(ctx, workspaceId) {
+export async function readProjectWorkspaceState(ctx: HostContext, workspaceId: string): Promise<WorkspaceChanges> {
   const current = await requireProject(ctx, workspaceId)
   return projectWorkspaceChanges(current.canonicalPath)
 }
@@ -100,7 +102,7 @@ export async function readProjectWorkspaceState(ctx, workspaceId) {
  * Validation order is part of the HTTP contract: message, Git project, detached
  * HEAD, active AI commit task, requirement running in the main workspace.
  */
-export function manualCommitProject(ctx, workspaceId, messageInput) {
+export function manualCommitProject(ctx: HostContext, workspaceId: string, messageInput: string): Promise<{ commit: CommitResult }> {
   const message = validateManualCommitMessage(messageInput)
   return withKeyLock('project-git:' + workspaceId, async function () {
     const current = await requireProject(ctx, workspaceId)
@@ -122,7 +124,7 @@ export function manualCommitProject(ctx, workspaceId, messageInput) {
  * HEAD / missing upstream before task guards); the integration re-validates the
  * Git state when it runs the pull.
  */
-export function pullProject(ctx, workspaceId) {
+export function pullProject(ctx: HostContext, workspaceId: string): Promise<PullResult> {
   return withKeyLock('project-git:' + workspaceId, async function () {
     const current = await requireProject(ctx, workspaceId)
     const root = current.canonicalPath
@@ -138,7 +140,7 @@ export function pullProject(ctx, workspaceId) {
 }
 
 /** Push the checked-out branch, establishing upstream with `-u` when missing. */
-export function pushProject(ctx, workspaceId) {
+export function pushProject(ctx: HostContext, workspaceId: string): Promise<PushResult> {
   return withKeyLock('project-git:' + workspaceId, async function () {
     const current = await requireProject(ctx, workspaceId)
     return pushProjectBranch(current.canonicalPath)

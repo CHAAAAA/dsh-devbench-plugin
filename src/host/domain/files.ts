@@ -1,3 +1,4 @@
+import type { FileEntry, FileContent } from '../../shared/api-types.js'
 /** Attachment filesystem service. Handles symlinks, reserved document, and exclusive create. */
 import { promises as fsp } from 'node:fs'
 import path from 'node:path'
@@ -39,14 +40,14 @@ function joinRelative(parent, name) {
   return parent.length === 0 ? name : path.posix.join(parent, name)
 }
 
-export async function listTree(folderPath, relative: any = undefined) {
+export async function listTree(folderPath: string, relative?: string): Promise<FileEntry[]> {
   const input = relative === null || relative === undefined ? '' : String(relative)
   const target = await resolveInside(folderPath, input, { mustExist: true })
   const stat = await fsp.lstat(target)
   if (stat.isSymbolicLink()) throw apiError(400, 'symlink-not-allowed', messages.symlinkNotAllowed)
   if (stat.isDirectory() === false) throw apiError(400, 'not-a-dir', messages.notADirectory)
   const entries = await fsp.readdir(target, { withFileTypes: true })
-  const result = []
+  const result: FileEntry[] = []
   const normalized = normalizeRelative(input)
   for (const entry of entries) {
     if (entry.name === META_DIR) continue
@@ -70,7 +71,7 @@ export async function listTree(folderPath, relative: any = undefined) {
   return result
 }
 
-export async function readFileContent(folderPath, relative) {
+export async function readFileContent(folderPath: string, relative: string): Promise<FileContent> {
   const target = await resolveInside(folderPath, relative, { mustExist: true })
   const stat = await fsp.lstat(target)
   if (stat.isSymbolicLink()) throw apiError(400, 'symlink-not-allowed', messages.symlinkNotAllowed)

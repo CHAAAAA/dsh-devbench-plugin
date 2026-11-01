@@ -21,6 +21,7 @@ import { git, makeGitProject } from './project-helpers.js'
 import {
   createTask,
   readTasks,
+  toTaskDto,
   updateTask,
 } from '../../src/host/storage/tasks.js'
 import { messages } from '../../src/host/messages/index.js'
@@ -454,6 +455,58 @@ test('project task endpoints degrade to 503 tasks-unavailable on corrupt task st
     const state = expectOk(await harness.request('GET', '/state'))
     assert.equal(state.workspaces.length, 1)
     assert.equal(state.workspaces[0].activeTaskCount, 0)
+
+    const file = path.join(harness.configDir, 'tasks.json')
+    const base = { id: 'legacy-task', kind: 'commit', status: 'succeeded' }
+    const stringFields = [
+      'workspaceId', 'projectPath', 'projectTitle', 'title', 'sessionId', 'prompt', 'diffText',
+      'baseHead', 'fingerprint', 'proposedMessage', 'commitHash', 'commitShort', 'commitSubject',
+      'reviewFile', 'worktreePath', 'worktreeBranch', 'requirementId', 'error', 'createdAt', 'updatedAt',
+    ]
+    const nullableFields = Object.fromEntries(
+      stringFields.concat(['changedFiles', 'pushed', 'reviewTarget']).map(function (field) { return [field, null] }),
+    )
+    // Both legacy array storage and omitted/null optional fields retain their DTO defaults.
+    for (const payload of [[base], { version: 1, tasks: [{ ...base, ...nullableFields }] }]) {
+      const text = JSON.stringify(payload)
+      await fsp.writeFile(file, text)
+      const [stored] = await readTasks()
+      const dto = toTaskDto(stored)
+      for (const field of stringFields) {
+        if (field !== 'prompt' && field !== 'diffText') assert.equal(dto[field], '')
+      }
+      assert.deepEqual(dto.changedFiles, [])
+      assert.equal(dto.pushed, false)
+      assert.equal(dto.reviewTarget, 'commit')
+      assert.equal(await fsp.readFile(file, 'utf8'), text)
+    }
+    const valid = {
+      ...base,
+      ...Object.fromEntries(stringFields.map(function (field) { return [field, 'value'] })),
+      workspaceId: 'w1', changedFiles: ['src/file.ts'], pushed: true, reviewTarget: 'uncommitted',
+    }
+    await fsp.writeFile(file, JSON.stringify({ version: 1, tasks: [valid] }))
+    assert.deepEqual(await readTasks(), [valid])
+    const taskDto = expectOk(await harness.request('GET', '/project/tasks?workspaceId=w1')).tasks[0]
+    assert.equal(taskDto.reviewTarget, 'uncommitted')
+    assert.equal(taskDto.pushed, true)
+    assert.deepEqual(taskDto.changedFiles, ['src/file.ts'])
+
+    const invalidFields: Array<Record<string, unknown>> = stringFields.map(function (field) { return { [field]: 123 } })
+    invalidFields.push(
+      { changedFiles: 'file.ts' }, { changedFiles: ['file.ts', 123] }, { changedFiles: [null] },
+      { pushed: 'false' }, { pushed: 0 }, { reviewTarget: '' }, { reviewTarget: 'other' },
+    )
+    for (const fields of invalidFields) {
+      const text = JSON.stringify({ version: 1, tasks: [{ ...base, workspaceId: 'w1', ...fields }] })
+      await fsp.writeFile(file, text)
+      await assert.rejects(readTasks(), { status: 500, code: 'tasks-corrupt' })
+      const failed = await harness.request('GET', '/project/tasks?workspaceId=w1')
+      assert.equal(failed.status, 503)
+      assert.equal(failed.data.error.code, 'tasks-unavailable')
+      assert.equal(failed.data.error.message, messages.tasksUnavailable)
+      assert.equal(await fsp.readFile(file, 'utf8'), text)
+    }
   } finally {
     await harness.close()
   }

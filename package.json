@@ -22,7 +22,7 @@
     "typescript"
   ],
   "engines": {
-    "node": ">=20.18.1",
+    "node": ">=24.9.0",
     "dsh": ">=0.2.1-rc.3 <0.3.0-0"
   },
   "exports": {
@@ -42,7 +42,7 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "README_zh.md",
+    "README_en.md",
     "LICENSE"
   ],
   "dsh": {
@@ -71,7 +71,7 @@
     "build": "npm run build:host && npm run build:client",
     "build:host": "tsx scripts/build-host.ts",
     "build:client": "tsx scripts/build-client.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "prepare": "npm run build",
     "pretest": "npm run build",
     "test": "node --import tsx --test test/host/*.test.ts test/client/*.test.ts",
@@ -91,10 +91,15 @@
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@types/node": "^24.19.2",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "globals": "^17.13.0",
+    "happy-dom": "^21.0.4",
     "jiti": "^2.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.1"
