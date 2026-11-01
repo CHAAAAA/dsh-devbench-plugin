@@ -111,8 +111,8 @@ npm run release:catalog    # 发布成功后生成索引；未发布预览用 --
 - `publish`（包括 dry-run）只消费现有 tarball 和 manifest，核对包名、版本、Git HEAD 与原始字节校验和，不重建或覆盖产物。实际发布时自动执行 git、tag、npm 登录及版本占用门禁；产物不匹配时重新 pack 并重新 smoke。
 - 直接使用 npm 时，`prepack`（`build` + `preflight`）与 `prepublishOnly`（`preflight --publish`）由 npm 自动触发。项目发布脚本会显式执行相同门禁后对既有 tarball 使用 `--ignore-scripts`，防止生命周期重新构建；不要在脚本外手工跳过门禁。
 - `smoke` 在临时 `DSH_HOME` 中安装、校验并卸载；可指定 `-- --cli <path>`、`-- --tarball <path>`，不操作真实 profile。
-- `publish -- --yes` 会发布到 npm、核对 integrity 并创建本地 `v<version>` tag（`--no-tag` 可跳过）；稳定版用 `latest`，预发布用 `next`。版本不可复用，历史由 tag / GitHub Release 记录。
-- `.github/workflows/ci.yml` 通过 `npm run check` 执行检查，再复用构建产物打包；推送 `v*` tag 会触发 `release.yml`，使用同一发布脚本并传入 `--yes --no-tag --allow-existing-tag --provenance`，需要 `NPM_TOKEN` 与 `npm-publish` environment。**本地发布与 CI 发布二选一；本地已发布的版本不要再推送 tag 触发重复发布**。
+- `publish -- --yes` 会发布到 npm、核对 integrity 并创建本地 `v<version>` tag（`--no-tag` 可跳过）；稳定版用 `latest`，预发布用 `next`。版本不可复用，历史由 tag / GitHub Release 记录。`--allow-existing-version` 仅用于 CI 部分失败后的续跑：版本已发布且 registry 上的 tarball 校验和与本地产物一致时跳过上传、继续后续步骤，不一致则阻断。
+- `.github/workflows/ci.yml` 通过 `npm run check` 执行检查，再复用构建产物打包；推送 `v*` tag 会触发 `release.yml`，使用同一发布脚本并传入 `--yes --no-tag --allow-existing-tag --allow-existing-version --provenance`，需要 `NPM_TOKEN` 与 `npm-publish` environment。**本地发布与 CI 发布二选一；本地已发布的版本不要再推送 tag 触发重复发布**。
 
 ## 8. 易错点
 

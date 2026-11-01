@@ -18,6 +18,8 @@
  *   --registry-check  extra pre-publish collision check
  *   --allow-existing-tag  accept the current release tag (CI tag builds)
  *   --provenance      include npm provenance (CI only)
+ *   --allow-existing-version  resume when the registry already has this identical tarball
+ *   --no-auth-check   skip the npm login check (for local verification)
  */
 import type { ReleaseManifest } from '../lib/pack.js'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -40,6 +42,8 @@ const dryRun = flags.has('yes') === false
 const pkg = loadPackage()
 const tag = values.get('tag') || defaultDistTag(pkg.version)
 const registry = values.get('registry')
+const allowExistingVersion = flags.has('allow-existing-version')
+const skipAuthCheck = flags.has('no-auth-check')
 
 if (!/^[a-z0-9][a-z0-9.-]*$/i.test(tag)) {
   console.error('release-publish: invalid dist-tag: ' + tag)
@@ -50,7 +54,30 @@ if (pkg.version.startsWith('0.0.0')) {
   process.exit(1)
 }
 
+/**
+ * Read the tarball integrity the registry has for this version.
+ * `exists:false` also covers registry/network failures: callers must not treat
+ * an unknown answer as proof that the version is missing.
+ */
+function lookupPublishedIntegrity(): { exists: boolean, integrity: string } {
+  const args = ['view', pkg.name + '@' + pkg.version, 'dist.integrity', 'version', '--json', '--prefer-online']
+  if (registry) args.push('--registry', registry)
+  const result = run('npm', args)
+  let info = null
+  try {
+    info = JSON.parse(String(result.stdout || '').trim())
+  } catch {
+    info = null
+  }
+  if (result.status !== 0 || info === null || typeof info !== 'object') {
+    return { exists: false, integrity: '' }
+  }
+  const integrity = info['dist.integrity'] || (info.dist && info.dist.integrity)
+  return { exists: true, integrity: typeof integrity === 'string' ? integrity : '' }
+}
+
 let manifest: ReleaseManifest
+let alreadyPublished = false
 try {
   manifest = readJson('dist/release/manifest.json')
   const expectedTarball = 'dist/release/' + tarballName(pkg)
@@ -63,10 +90,23 @@ try {
   if (manifest.sha256 !== sha256(manifest.tarball) || manifest.sha512 !== sha512Base64(manifest.tarball)) {
     throw new Error('tarball checksum does not match the release manifest; run `npm run release:pack`')
   }
+  if (dryRun === false) {
+    const existing = lookupPublishedIntegrity()
+    if (existing.exists) {
+      if (allowExistingVersion === false) {
+        throw new Error('version ' + pkg.version + ' is already published; bump the version before publishing')
+      }
+      if (existing.integrity !== 'sha512-' + manifest.sha512) {
+        throw new Error('version ' + pkg.version + ' is already published with different contents; refusing to continue')
+      }
+      alreadyPublished = true
+      console.log('release-publish: registry already has ' + pkg.name + '@' + pkg.version + ' with matching integrity; skipping publish')
+    }
+  }
   const report = runPreflight({
     publish: !dryRun,
-    authCheck: !dryRun,
-    registryCheck: flags.has('registry-check') || dryRun === false,
+    authCheck: !dryRun && skipAuthCheck === false,
+    registryCheck: (flags.has('registry-check') || dryRun === false) && alreadyPublished === false,
     registry,
     skipPackCheck: true,
     allowExistingTag: flags.has('allow-existing-tag'),
@@ -91,10 +131,24 @@ if (dryRun) {
   process.exit(0)
 }
 
-console.log('release-publish: publishing ' + pkg.name + '@' + pkg.version + ' (dist-tag: ' + tag + ')')
-const published = run('npm', publishArgs, { stdio: 'inherit' })
-if (published.status !== 0) {
-  console.error('release-publish: npm publish failed with exit code ' + published.status)
+const expectedIntegrity = 'sha512-' + manifest.sha512
+let publishFailed = false
+if (alreadyPublished === false) {
+  console.log('release-publish: publishing ' + pkg.name + '@' + pkg.version + ' (dist-tag: ' + tag + ')')
+  const published = run('npm', publishArgs, { stdio: 'inherit' })
+  publishFailed = published.status !== 0
+  if (publishFailed) {
+    console.error('release-publish: npm publish failed with exit code ' + published.status)
+    // The registry may still have accepted the upload before the CLI reported a
+    // failure; a resumed CI run can only continue when that copy is identical.
+    const existing = allowExistingVersion ? lookupPublishedIntegrity() : { exists: false, integrity: '' }
+    if (existing.exists === true && existing.integrity === expectedIntegrity) {
+      console.warn('release-publish: the registry already has an identical tarball; continuing')
+      publishFailed = false
+    }
+  }
+}
+if (publishFailed) {
   console.error('  - version already published? bump version and retry')
   console.error('  - not logged in? run `npm login`')
   console.error('  - scope/permission error? check the registry and package ownership')
@@ -102,8 +156,7 @@ if (published.status !== 0) {
 }
 
 // ---- verify the registry copy matches the inspected tarball ------------------
-const expectedIntegrity = 'sha512-' + manifest.sha512
-const viewArgs = ['view', pkg.name + '@' + pkg.version, 'dist.integrity', 'version', '--json']
+const viewArgs = ['view', pkg.name + '@' + pkg.version, 'dist.integrity', 'version', '--json', '--prefer-online']
 if (registry) viewArgs.push('--registry', registry)
 for (let attempt = 1; attempt <= 5; attempt += 1) {
   const view = run('npm', viewArgs)

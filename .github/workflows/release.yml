@@ -48,10 +48,13 @@ jobs:
       - name: Pack tarball
         run: npm run release:pack -- --skip-build
 
+      # --allow-existing-version lets a re-run resume after a partial failure:
+      # it continues only when the registry already has this tag's tarball with
+      # a matching integrity, so a published version is never overwritten.
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm run release:publish -- --yes --no-tag --allow-existing-tag --provenance
+        run: npm run release:publish -- --yes --no-tag --allow-existing-tag --allow-existing-version --provenance
 
       - name: Generate plugin market index
         env:
