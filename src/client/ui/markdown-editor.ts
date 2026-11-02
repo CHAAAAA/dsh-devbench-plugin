@@ -39,6 +39,7 @@ const HELP_ROWS = [
   ['1. item', 'markdown.help.ordered'],
   ['> quote', 'markdown.help.quote'],
   ['[text](https://)', 'markdown.help.link'],
+  ['| a | b |', 'markdown.help.table'],
   ['---', 'markdown.help.divider'],
 ]
 
