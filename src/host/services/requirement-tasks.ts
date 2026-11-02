@@ -190,8 +190,13 @@ export function deriveRequirementTaskRecords(ctx, workspace, requirements, recor
   const items = Array.isArray(requirements) ? requirements : []
   for (const requirement of items) {
     const sessionIds = Array.isArray(requirement.sessions) ? requirement.sessions : []
+    // Discussion sessions are interactive and are not execution tasks: keep them out
+    // of the task center and out of the "active task" blockers in the requirement UI.
+    const discussionSessions = new Set(
+      Array.isArray(requirement.discussionSessions) ? requirement.discussionSessions : [])
     for (const sessionId of sessionIds) {
       if (typeof sessionId !== 'string' || sessionId.length === 0) continue
+      if (discussionSessions.has(sessionId)) continue
       if (seen.has(sessionId)) continue
       if (recordedSessionTask(recordedTasks, sessionId) !== null) continue
       seen.add(sessionId)

@@ -8,6 +8,8 @@ import {
   CONFIG_DIR_ENV,
   CONFIG_DIR_NAME,
   DEFAULT_COMMIT_PROMPT_TEMPLATE,
+  DEFAULT_DISCUSSION_PROMPT_TEMPLATE,
+  DEFAULT_ORGANIZE_PROMPT_TEMPLATE,
   DEFAULT_PROMPT_TEMPLATE,
   DEFAULT_REVIEW_PROMPT_TEMPLATE,
   LEGACY_CONFIG_DIR_ENV,
@@ -81,6 +83,8 @@ export function defaultConfig(): ConfigDto {
     promptTemplate: DEFAULT_PROMPT_TEMPLATE,
     reviewPromptTemplate: DEFAULT_REVIEW_PROMPT_TEMPLATE,
     commitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
+    organizePromptTemplate: DEFAULT_ORGANIZE_PROMPT_TEMPLATE,
+    discussionPromptTemplate: DEFAULT_DISCUSSION_PROMPT_TEMPLATE,
     worktreeRoot: '',
   }
 }
@@ -117,6 +121,14 @@ export async function readConfig(): Promise<ConfigDto> {
     data.commitPromptTemplate.trim().length > 0
     ? data.commitPromptTemplate
     : DEFAULT_COMMIT_PROMPT_TEMPLATE
+  const organizePrompt = typeof data.organizePromptTemplate === 'string' &&
+    data.organizePromptTemplate.trim().length > 0
+    ? data.organizePromptTemplate
+    : DEFAULT_ORGANIZE_PROMPT_TEMPLATE
+  const discussionPrompt = typeof data.discussionPromptTemplate === 'string' &&
+    data.discussionPromptTemplate.trim().length > 0
+    ? data.discussionPromptTemplate
+    : DEFAULT_DISCUSSION_PROMPT_TEMPLATE
   const worktreeRoot = typeof data.worktreeRoot === 'string' ? data.worktreeRoot : ''
   if (worktreeRoot.length > 0 && path.isAbsolute(worktreeRoot) === false) {
     throw apiError(500, 'config-corrupt', messages.configCorrupt)
@@ -126,6 +138,8 @@ export async function readConfig(): Promise<ConfigDto> {
     promptTemplate: prompt,
     reviewPromptTemplate: reviewPrompt,
     commitPromptTemplate: commitPrompt,
+    organizePromptTemplate: organizePrompt,
+    discussionPromptTemplate: discussionPrompt,
     worktreeRoot,
   }
 }
@@ -149,6 +163,18 @@ async function persistConfig(next: Partial<ConfigDto>): Promise<ConfigDto> {
   const storedCommitTemplate = commitPromptTemplate === DEFAULT_COMMIT_PROMPT_TEMPLATE
     ? ''
     : commitPromptTemplate
+  const organizePromptTemplate = typeof next.organizePromptTemplate === 'string'
+    ? next.organizePromptTemplate
+    : ''
+  const storedOrganizeTemplate = organizePromptTemplate === DEFAULT_ORGANIZE_PROMPT_TEMPLATE
+    ? ''
+    : organizePromptTemplate
+  const discussionPromptTemplate = typeof next.discussionPromptTemplate === 'string'
+    ? next.discussionPromptTemplate
+    : ''
+  const storedDiscussionTemplate = discussionPromptTemplate === DEFAULT_DISCUSSION_PROMPT_TEMPLATE
+    ? ''
+    : discussionPromptTemplate
   const worktreeRoot = typeof next.worktreeRoot === 'string' ? next.worktreeRoot : ''
   if (worktreeRoot.length > 0 && path.isAbsolute(worktreeRoot) === false) {
     throw apiError(400, 'bad-root', messages.badRoot)
@@ -160,6 +186,8 @@ async function persistConfig(next: Partial<ConfigDto>): Promise<ConfigDto> {
     promptTemplate: storedTemplate,
     reviewPromptTemplate: storedReviewTemplate,
     commitPromptTemplate: storedCommitTemplate,
+    organizePromptTemplate: storedOrganizeTemplate,
+    discussionPromptTemplate: storedDiscussionTemplate,
     worktreeRoot,
   })
   return {
@@ -167,6 +195,8 @@ async function persistConfig(next: Partial<ConfigDto>): Promise<ConfigDto> {
     promptTemplate: storedTemplate || DEFAULT_PROMPT_TEMPLATE,
     reviewPromptTemplate: storedReviewTemplate || DEFAULT_REVIEW_PROMPT_TEMPLATE,
     commitPromptTemplate: storedCommitTemplate || DEFAULT_COMMIT_PROMPT_TEMPLATE,
+    organizePromptTemplate: storedOrganizeTemplate || DEFAULT_ORGANIZE_PROMPT_TEMPLATE,
+    discussionPromptTemplate: storedDiscussionTemplate || DEFAULT_DISCUSSION_PROMPT_TEMPLATE,
     worktreeRoot,
   }
 }

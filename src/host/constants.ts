@@ -65,6 +65,46 @@ export const DEFAULT_PROMPT_TEMPLATE = [
 ].join('\n')
 
 /**
+ * Default "organize session into a requirement" prompt. Placeholders are
+ * rendered by renderPrompt: {workspaceTitle} {workspaceId} {sessionId} {titleHint}.
+ * Users can override it in settings; the override must keep {workspaceId}.
+ */
+export const DEFAULT_ORGANIZE_PROMPT_TEMPLATE = [
+  '你正在一个 DSH 会话中。用户希望把本次会话的内容整理为一个需求，写入工作区「{workspaceTitle}」的需求目录。',
+  '',
+  '{titleHint}',
+  '',
+  '要求：',
+  '1. 根据本次会话的完整上下文，提炼需求标题、背景、需求内容与验收标准；会话中已经讨论清楚的实现方案、约束和风险也要保留，写入「实现方案」章节。',
+  '2. 调用 requirement_create 工具创建需求：workspace_id 使用「{workspaceId}」，title 为提炼出的中文标题，body 为完整 Markdown 正文（至少包含 # 标题、## 背景、## 需求内容、## 验收标准，如有实现方案再加 ## 实现方案）。',
+  '3. 创建后工具会返回需求 ID 与路径，并自动把当前会话关联到新需求；不要用其他方式写文件。',
+  '4. 最后用一两句话汇报需求 ID、标题和主要章节。如果会话内容不足以形成需求，先说明缺少什么并询问用户，不要凭空编造。',
+].join('\n')
+
+/**
+ * Default requirement-discussion prompt. Placeholders are rendered by
+ * renderPrompt: {workspaceTitle} {title} {id} {requirementPath} {folderPath} {body}.
+ * Users can override it in settings.
+ */
+export const DEFAULT_DISCUSSION_PROMPT_TEMPLATE = [
+  '你正在与用户讨论需求「{title}」（需求 ID：{id}），目标是共同完善这份需求，而不是直接实现它。',
+  '',
+  '需求文档：{requirementPath}',
+  '需求资料目录：{folderPath}',
+  '',
+  '===== 需求正文 =====',
+  '{body}',
+  '===== 需求正文结束 =====',
+  '',
+  '讨论要求：',
+  '1. 先读懂需求，围绕目标、范围、约束、验收标准与实现方案与用户对话。每轮聚焦最关键的问题，必要时给出可选方案和你的建议，不要一次罗列过多问题。',
+  '2. 当讨论形成明确结论、用户同意修改，或用户直接要求修改时，主动更新需求正文：先调用 requirement_read 读取最新正文，再用 requirement_update 写回（mode=replace 覆盖，mode=append 追加），不要修改文件头部元数据；写入后简要说明改了哪些章节。',
+  '3. 需求状态由用户确认；你可以把状态改为 running/new，但不要标记为已完成。',
+  '4. 需求资料目录中的文件可用 requirement_read 的 file 参数读取；需要新增或修改资料文件时先询问用户。',
+  '5. 本会话只讨论和完善需求，不要直接开始编码实现，也不要自动 commit / push。',
+].join('\n')
+
+/**
  * Default review-task prompt. Placeholders are rendered by renderPrompt:
  * {taskId} {projectTitle} {projectPath} {commitHash} {commitShort} {commitSubject}.
  * Users can override it in settings; the override must keep {taskId}.

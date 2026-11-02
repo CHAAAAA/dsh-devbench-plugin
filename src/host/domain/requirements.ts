@@ -55,6 +55,25 @@ export function requirementCommitList(meta) {
   return normalizeCommitList(meta && meta.extra && meta.extra.commits)
 }
 
+/**
+ * Session ids linked as requirement discussions. Discussion sessions stay in
+ * `sessions` for display but are excluded from derived execution-task records.
+ */
+export function requirementDiscussionSessions(meta) {
+  const raw = meta && meta.extra && Array.isArray(meta.extra.discussSessions)
+    ? meta.extra.discussSessions
+    : []
+  const sessions = Array.isArray(meta && meta.sessions) ? meta.sessions : []
+  const result = []
+  for (const item of raw) {
+    if (typeof item !== 'string' || item.length === 0) continue
+    if (sessions.includes(item) === false) continue
+    if (result.includes(item)) continue
+    result.push(item)
+  }
+  return result
+}
+
 /** Prefix-tolerant comparison: documents store fully resolved hashes. */
 export function commitMatches(stored, target) {
   if (isCommitHash(stored) === false || isCommitHash(target) === false) return false
@@ -156,6 +175,7 @@ export function toSummary(meta: ReturnType<typeof parseRequirementText>['meta'],
     createdAt: meta.createdAt,
     updatedAt: meta.updatedAt,
     sessions: meta.sessions.slice(),
+    discussionSessions: requirementDiscussionSessions(meta),
     commits: requirementCommitList(meta),
     worktree: Boolean(meta.extra && meta.extra.worktree === true),
     favorite: Boolean(meta.extra && meta.extra.favorite === true),
@@ -498,13 +518,75 @@ export async function linkSessionToCommitRequirements(root, workspaceId, commitH
 export async function findLinkedRequirement(root, sessionId) {
   if (typeof sessionId !== 'string' || sessionId.length === 0) return null
   const mapping = await readMapping(root)
+  // Legacy data may hold the same session on several requirements; resolve to the
+  // most recently updated document instead of depending on workspace mapping order.
+  let best = null
   for (const workspaceId of Object.keys(mapping)) {
     const entry = getWorkspaceEntry(mapping, workspaceId)
     if (entry === null) continue
     const folderPath = await resolveWorkspaceFolder(root, entry.folder, { mustExist: false })
     const summaries = await scanRequirements(folderPath, workspaceId)
-    const hit = summaries.find(function (item) { return item.sessions.includes(sessionId) })
-    if (hit) return findRequirementInWorkspace(root, workspaceId, hit.id, mapping)
+    for (const summary of summaries) {
+      if (summary.sessions.includes(sessionId) === false) continue
+      if (best === null || String(summary.updatedAt || '') > String(best.summary.updatedAt || '')) {
+        best = { workspaceId, summary }
+      }
+    }
   }
-  return null
+  if (best === null) return null
+  return findRequirementInWorkspace(root, best.workspaceId, best.summary.id, mapping)
+}
+
+/**
+ * Remove one session from every requirement except `keep`. Used after creating a
+ * requirement from a session so the conversation points at a single requirement.
+ * Failures are collected per document instead of aborting the whole sweep.
+ */
+export async function detachSessionFromRequirements(root, sessionId, keep) {
+  const result = { detached: [], failed: [] }
+  if (typeof sessionId !== 'string' || sessionId.length === 0) return result
+  const mapping = await readMapping(root)
+  for (const workspaceId of Object.keys(mapping)) {
+    const entry = getWorkspaceEntry(mapping, workspaceId)
+    if (entry === null) continue
+    let folderPath
+    try {
+      folderPath = await resolveWorkspaceFolder(root, entry.folder, { mustExist: false })
+    } catch {
+      continue
+    }
+    let summaries
+    try {
+      summaries = await scanRequirements(folderPath, workspaceId)
+    } catch {
+      continue
+    }
+    for (const summary of summaries) {
+      if (Array.isArray(summary.sessions) === false || summary.sessions.includes(sessionId) === false) continue
+      if (keep && workspaceId === keep.workspaceId && summary.id === keep.id) continue
+      try {
+        const found = await findRequirementInWorkspace(root, workspaceId, summary.id, mapping)
+        if (found === null) continue
+        await updateRequirement(found, function (latest) {
+          const sessions = latest.meta.sessions.filter(function (item) { return item !== sessionId })
+          const extra = Object.assign({}, latest.meta.extra)
+          if (Array.isArray(extra.discussSessions)) {
+            extra.discussSessions = extra.discussSessions.filter(function (item) { return item !== sessionId })
+            if (extra.discussSessions.length === 0) delete extra.discussSessions
+          }
+          return { meta: { sessions: sessions, extra: extra } }
+        })
+        result.detached.push({ workspaceId: workspaceId, id: summary.id })
+      } catch (error) {
+        result.failed.push({
+          workspaceId: workspaceId,
+          id: summary.id,
+          message: error && typeof error === 'object' && 'message' in error
+            ? String(error.message)
+            : String(error),
+        })
+      }
+    }
+  }
+  return result
 }

@@ -1752,6 +1752,10 @@ test('requirement detail exposes worktree controls and settings expose templates
       defaultReviewPromptTemplate: 'default template {taskId}',
       commitPromptTemplate: 'custom commit {taskId} {changedFiles} {diffText}',
       defaultCommitPromptTemplate: 'default commit {taskId} {changedFiles} {diffText}',
+      organizePromptTemplate: 'custom organize {workspaceId}',
+      defaultOrganizePromptTemplate: 'default organize {workspaceId}',
+      discussionPromptTemplate: 'custom discussion {body}',
+      defaultDiscussionPromptTemplate: 'default discussion {body}',
       worktreeRoot: '/tmp/worktrees',
       defaultWorktreeRoot: '/tmp/default-worktrees',
     }),
@@ -1762,11 +1766,15 @@ test('requirement detail exposes worktree controls and settings expose templates
   assert.equal(text.indexOf('settings.commitTemplate') >= 0, true)
   assert.equal(text.indexOf('settings.commitTemplate.hint') >= 0, true)
   assert.equal(text.indexOf('settings.commitTemplate.reset') >= 0, true)
+  assert.equal(text.indexOf('settings.organizeTemplate') >= 0, true)
+  assert.equal(text.indexOf('settings.discussionTemplate') >= 0, true)
   assert.equal(text.indexOf('settings.worktree.root') >= 0, true)
-  // Execution, review and commit prompt templates each get their own textarea.
+  // Execution, review, commit, organize and discussion prompt templates each get their own textarea.
   const promptTextareas = nodes.filter(function (node) { return node.type === 'textarea' })
-  assert.equal(promptTextareas.length, 3)
+  assert.equal(promptTextareas.length, 5)
   assert.equal(promptTextareas[2].props.value, 'custom commit {taskId} {changedFiles} {diffText}')
+  assert.equal(promptTextareas[3].props.value, 'custom organize {workspaceId}')
+  assert.equal(promptTextareas[4].props.value, 'custom discussion {body}')
 })
 test('settings rejects a commit prompt template without the required placeholders', async function () {
   cleanup()

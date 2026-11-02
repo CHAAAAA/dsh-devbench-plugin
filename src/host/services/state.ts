@@ -4,6 +4,8 @@ import type { ConfigDto, StateDto, WorkspaceDto } from '../../shared/api-types.j
 import { promises as fsp } from 'node:fs'
 import {
   DEFAULT_COMMIT_PROMPT_TEMPLATE,
+  DEFAULT_DISCUSSION_PROMPT_TEMPLATE,
+  DEFAULT_ORGANIZE_PROMPT_TEMPLATE,
   DEFAULT_PROMPT_TEMPLATE,
   DEFAULT_REVIEW_PROMPT_TEMPLATE,
 } from '../constants.js'
@@ -88,6 +90,10 @@ export async function buildState(ctx: HostContext, config: ConfigDto): Promise<S
       defaultReviewPromptTemplate: DEFAULT_REVIEW_PROMPT_TEMPLATE,
       commitPromptTemplate: config.commitPromptTemplate,
       defaultCommitPromptTemplate: DEFAULT_COMMIT_PROMPT_TEMPLATE,
+      organizePromptTemplate: config.organizePromptTemplate,
+      defaultOrganizePromptTemplate: DEFAULT_ORGANIZE_PROMPT_TEMPLATE,
+      discussionPromptTemplate: config.discussionPromptTemplate,
+      defaultDiscussionPromptTemplate: DEFAULT_DISCUSSION_PROMPT_TEMPLATE,
       worktreeRoot: config.worktreeRoot || '',
       defaultWorktreeRoot: defaultWorktreeRoot(),
     },

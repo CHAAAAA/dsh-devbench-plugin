@@ -17,7 +17,7 @@ import { renderMarkdown } from '../../ui/markdown.js'
 import { MarkdownEditor, MarkdownHelp } from '../../ui/markdown-editor.js'
 import {
   IconBack, IconPlay, IconFolder, IconTrash, IconPlus, IconExternal, IconLink,
-  IconEdit, IconMaximize, IconMinimize, IconStar,
+  IconEdit, IconMaximize, IconMinimize, IconStar, IconChat,
 } from '../../ui/icons.js'
 function selectSessionsSnapshot(snapshot) { return snapshot }
 const EMPTY_FILES = { loading: false, error: '', data: null, seq: 0 }
@@ -83,6 +83,7 @@ export function DetailView(props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [executeBusy, setExecuteBusy] = useState(false)
+  const [discussBusy, setDiscussBusy] = useState(false)
   const [statusBusy, setStatusBusy] = useState(false)
   const [pendingStatus, setPendingStatus] = useState('')
   const [commitSubjects, setCommitSubjects] = useState({})
@@ -120,6 +121,7 @@ export function DetailView(props) {
   const loadedKeyRef = useRef('')
   const filesSeqRef = useRef(0)
   const executeBusyRef = useRef(false)
+  const discussBusyRef = useRef(false)
   const statusBusyRef = useRef(false)
   const deleteBusyRef = useRef(false)
   const fileBusyRef = useRef(false)
@@ -130,6 +132,27 @@ export function DetailView(props) {
   const draftTimerRef = useRef(null)
   fileDirtyRef.current = fileDirty
   dirtyRef.current = dirty
+  // Refresh the open detail when a linked session (e.g. a discussion session) stops
+  // running, so Agent edits to the requirement body show up without a manual reload.
+  const relatedSessionIds = data && data.requirement && Array.isArray(data.requirement.sessions)
+    ? data.requirement.sessions
+    : []
+  let anyRelatedSessionRunning = false
+  for (let index = 0; index < relatedSessionIds.length; index += 1) {
+    const summary = sessionsSnapshot.byId ? sessionsSnapshot.byId[relatedSessionIds[index]] : null
+    if (summary && summary.running) {
+      anyRelatedSessionRunning = true
+      break
+    }
+  }
+  const previousRunningRef = useRef(false)
+  useEffect(function () {
+    const wasRunning = previousRunningRef.current
+    previousRunningRef.current = anyRelatedSessionRunning
+    if (wasRunning === true && anyRelatedSessionRunning === false) {
+      reloadDetail().catch(noop)
+    }
+  }, [anyRelatedSessionRunning])
   const sel = props.selected || { workspaceId: '', id: '' }
   const key = sel.workspaceId + '/' + sel.id
   function pushToast(kind, text, options?) {
@@ -755,15 +778,24 @@ export function DetailView(props) {
     if (!data) return null
     const requirement = data.requirement || {}
     const sessionIds = Array.isArray(requirement.sessions) ? requirement.sessions : []
+    // Discussion sessions are interactive; they must not turn the Execute button into
+    // "open execution session" or block execution/status changes.
+    const discussionSessions = Array.isArray(requirement.discussionSessions)
+      ? requirement.discussionSessions
+      : []
     for (let index = 0; index < sessionIds.length; index += 1) {
+      if (discussionSessions.includes(sessionIds[index])) continue
       const summary = sessionsSnapshot.byId ? sessionsSnapshot.byId[sessionIds[index]] : null
       if (summary && summary.running) return sessionIds[index]
     }
     if (activeTask && typeof activeTask.sessionId === 'string' && activeTask.sessionId !== '') {
       return activeTask.sessionId
     }
-    if (requirement.status === 'running' && sessionIds.length > 0) {
-      const candidate = sessionIds[sessionIds.length - 1]
+    const executionSessions = sessionIds.filter(function (sessionId) {
+      return discussionSessions.includes(sessionId) === false
+    })
+    if (requirement.status === 'running' && executionSessions.length > 0) {
+      const candidate = executionSessions[executionSessions.length - 1]
       const known = sessionsSnapshot.byId ? sessionsSnapshot.byId[candidate] : null
       if (!known) return candidate
     }
@@ -803,6 +835,31 @@ export function DetailView(props) {
     }).finally(function () {
       executeBusyRef.current = false
       setExecuteBusy(false)
+    })
+  }
+  function discuss() {
+    if (discussBusyRef.current || executeBusyRef.current || savingRef.current || !data) {
+      return Promise.resolve()
+    }
+    const activeTask = activeRequirementTaskFor()
+    if (activeTask !== null) {
+      pushToast('info', t('detail.discuss.blockedActive'))
+      return Promise.resolve()
+    }
+    discussBusyRef.current = true
+    setDiscussBusy(true)
+    setError('')
+    return saveBeforeExecute().then(function () {
+      return props.onDiscuss({
+        workspaceId: sel.workspaceId,
+        id: sel.id,
+        title: data.requirement.title,
+      })
+    }).catch(function (err) {
+      pushToast('error', errorText(err))
+    }).finally(function () {
+      discussBusyRef.current = false
+      setDiscussBusy(false)
     })
   }
   function openFolder() {
@@ -1029,12 +1086,14 @@ export function DetailView(props) {
   const activeRequirementTask = activeRequirementTaskFor()
   const activeWorktreeTask = activeWorktreeTaskFor()
   const requirementRunning = summary.status === 'running'
-  const hardDisabled = executeBusy || fileTreeBusy
+  const hardDisabled = executeBusy || discussBusy || fileTreeBusy
   const destructiveDisabled = saving || hardDisabled
   const runningSessionId = findRunningSessionId(activeRequirementTask)
   const displayStatus = pendingStatus !== '' ? pendingStatus : summary.status
-  const executeDisabled = executeBusy || saving || fileTreeBusy || statusBusy ||
+  const executeDisabled = executeBusy || discussBusy || saving || fileTreeBusy || statusBusy ||
     (runningSessionId === null && activeRequirementTask !== null)
+  const discussDisabled = discussBusy || executeBusy || saving || fileTreeBusy || statusBusy ||
+    activeRequirementTask !== null
   const worktreeToggleDisabled = hardDisabled || saving || worktreeBusy || statusBusy ||
     activeRequirementTask !== null
   const statusSelect = h('select', {
@@ -1128,6 +1187,15 @@ export function DetailView(props) {
             setDeleteOpen(true)
           },
         }, h(IconTrash, { size: 15 })),
+        h('button', {
+          className: 'devbench-btn',
+          disabled: discussDisabled,
+          title: activeRequirementTask !== null
+            ? t('detail.discuss.blockedActive')
+            : t('detail.discuss.hint'),
+          onClick() { discuss().catch(noop) },
+        }, h(IconChat, { size: 14 }),
+          discussBusy ? t('detail.discuss.busy') : t('detail.discuss')),
         h('button', {
           className: 'devbench-btn primary',
           disabled: executeDisabled,

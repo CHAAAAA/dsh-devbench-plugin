@@ -15,7 +15,7 @@
 ## Features
 
 - **Project workbench**: a three-pane master-detail layout (project tree, list, detail) with Overview, Requirements, Documents, Commits, Worktrees, Reviews, and Tasks tabs, plus breadcrumbs and view history.
-- **Requirements**: Markdown requirements per workspace with title, status, body, attachment files, related sessions, and related commits. The list supports title and full-text search (full-text matches show a body snippet), draft recovery, an unsaved-changes guard, and save conflict handling.
+- **Requirements**: Markdown requirements per workspace with title, status, body, attachment files, related sessions, and related commits. The list supports title and full-text search (full-text matches show a body snippet), draft recovery, an unsaved-changes guard, and save conflict handling. **Discuss requirement** creates a linked session for a requirement so you can clarify it with the Agent and let the Agent update the body directly; the discussion prompt template is configurable in Settings.
 - **Project documents**: every project has a **Documents** tab for simple notes such as release procedures or reusable prompts. Documents are stored as Markdown files in the `.documents/` directory of the project's directory inside the requirements root directory, so they never enter the project repository. The list shows titles only and supports title and full-text search; editing uses the same Markdown editor with live preview as requirements.
 - **Requirement favorites**: star a requirement from the list or the detail view and turn on **Favorites only** to filter the list.
 - **Requirement execution**: create a session from a requirement with a templated prompt, then automatically link and open it on success; show an error if creation fails. Optionally run each requirement in its own Git worktree (branch `devbench/<requirement ID>`).
@@ -27,8 +27,8 @@
 - **Home and weekly reports**: recent and unfinished tasks across projects, a locally generated weekly report, and an overview of the MCP services in the current DSH profile.
 - **Version check and upgrade**: when the plugin starts, it checks the latest version on npm. A newer release adds an upgrade button in the top-right corner of the plugin page; clicking it installs the latest version through the current DSH profile's package manager, and a DSH restart activates it. The **About plugin** panel on the home page shows the current version, latest version, upgrade status, and project URL.
 - **MCP service management**: view, add, edit, enable or disable, and remove MCP entries of the current DSH profile. Writes go to that profile's `cordis.patch.yml` with an automatic backup, and suspected secrets are masked.
-- **Session linking**: link the current session to a requirement from the session header, or jump back to it.
-- **Agent tools**: six tools (`requirement_read/update/list`, `project_commit_propose/git_show/review_write`) that let agents read and write requirements, commit messages, and reviews.
+- **Session linking**: link the current session to a requirement from the session header, jump back to it, or organize the current session content into a new requirement in the selected project's requirement folder; the organize prompt template is configurable in Settings.
+- **Agent tools**: seven tools (`requirement_read/update/list/create`, `project_commit_propose/git_show/review_write`) that let agents read and write requirements, create requirements from a session summary, commit messages, and reviews.
 
 ## Installation
 

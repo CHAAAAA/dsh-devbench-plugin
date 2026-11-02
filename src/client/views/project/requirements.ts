@@ -455,6 +455,71 @@ export function ProjectRequirements(props) {
       throw err
     })
   }
+  /** Create a linked session and start the requirement-discussion prompt in it. */
+  function runDiscussion(item) {
+    const ctx = getRuntimeContext()
+    if (!ctx || !ctx.sessions || typeof ctx.sessions.create !== 'function') {
+      throw new Error(t('common.offline'))
+    }
+    let sessionId = ''
+    let promptText = ''
+    return api.discussRequirement({ workspaceId: item.workspaceId, id: item.id })
+      .then(function (result) {
+        promptText = result.prompt
+        return ctx.sessions.create({ workspaceId: item.workspaceId })
+      })
+      .then(function (id) {
+        sessionId = id
+        // Link before prompting so requirement_update can resolve the requirement by session.
+        // `discussion: true` keeps the session out of derived execution-task records.
+        return api.linkSession({
+          workspaceId: item.workspaceId, id: item.id, sessionId: sessionId, discussion: true,
+        })
+      })
+      .then(function () {
+        const requestId = 'discuss-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10)
+        return ctx.remote.session.prompt({
+          requestId: requestId, sessionId: sessionId, mode: 'queue',
+          content: [{ type: 'text', text: promptText }],
+          clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }).then(function (result) {
+          if (result && result.ok === false) throw new Error(result.error.message)
+          return sessionId
+        })
+      })
+      .then(function (id) {
+        ctx.remote.session.rename({
+          sessionId: id,
+          title: t('detail.discuss.sessionPrefix', { title: item.title }),
+        }).catch(noop)
+        return Promise.allSettled([loadDetail({ workspaceId: item.workspaceId, id: item.id }), reloadState()])
+          .then(function () {
+            // Leaving the requirement page can discard unsaved drafts or file edits, so
+            // open the session only after the leave guard allows it and the row is still selected.
+            return runLeaveGuard().then(function (allowed) {
+              const current = uiStore.state.selectedRequirement
+              const stillSelected = Boolean(current &&
+                current.workspaceId === item.workspaceId && current.id === item.id)
+              if (allowed === true && stillSelected) ctx.uiWorkspace.openSession(id)
+              return id
+            })
+          })
+      }, function (err) {
+        // A session may already exist when the prompt failed; refresh so it shows as linked.
+        if (sessionId !== '') {
+          Promise.allSettled([loadDetail({ workspaceId: item.workspaceId, id: item.id }), reloadState()])
+            .catch(noop)
+        }
+        throw err
+      })
+  }
+  /** Shared single-flight key with execution: a requirement runs one session at a time. */
+  function discussRequirement(item) {
+    const key = item.workspaceId + '/' + item.id
+    return requirementExecutions.run(key, function () {
+      return runDiscussion(item)
+    })
+  }
   function unlinkSession(requirement, sessionId) {
     if (unlinkBusyRef.current) return
     unlinkBusyRef.current = true
@@ -702,6 +767,7 @@ export function ProjectRequirements(props) {
       tasks: tasks,
       onBack: backToList,
       onExecute: executeRequirement,
+      onDiscuss: discussRequirement,
       onStatusToast: typeof props.onStatusToast === 'function' ? props.onStatusToast : undefined,
       onReloadDetail() {
         const current = uiStore.state.selectedRequirement

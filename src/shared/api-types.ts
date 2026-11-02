@@ -14,6 +14,8 @@ export interface RequirementSummary extends RequirementSelection {
   createdAt: string
   updatedAt: string
   sessions: string[]
+  /** Linked sessions started for requirement discussion; excluded from derived execution tasks. */
+  discussionSessions?: string[]
   commits: string[]
   worktree: boolean
   favorite: boolean
@@ -47,6 +49,11 @@ export interface SaveRequirementRequest extends RequirementSelection {
   force?: boolean
 }
 export interface RequirementLink extends RequirementSelection { title: string; status: RequirementStatus }
+/** Organize the current session content into a requirement in the selected project. */
+export interface OrganizeRequirementRequest { sessionId: string; workspaceId: string; titleHint?: string }
+export interface OrganizeRequirementResponse { prompt: string; workspaceId: string; workspaceTitle: string }
+/** Discussion prompt for an existing requirement; the session is linked by the browser. */
+export interface DiscussionPromptResponse { prompt: string; requirement: RequirementSummary }
 export interface DocumentSummary { id: string; title: string; createdAt: string; updatedAt: string }
 export interface DocumentDetail { document: DocumentSummary; body: string }
 export interface CreateDocumentRequest { workspaceId: string; title: string; body?: string }
@@ -56,11 +63,21 @@ export interface RequirementSearchItem { id: string; title: string; status: Requ
 export interface DocumentSearchItem { id: string; title: string; updatedAt: string; match: SearchMatch }
 export interface SearchResult<T> { query: string; scope: SearchScope; total: number; hasMore: boolean; items: T[] }
 
-export interface ConfigDto { rootDir: string; promptTemplate: string; reviewPromptTemplate: string; commitPromptTemplate: string; worktreeRoot: string }
+export interface ConfigDto {
+  rootDir: string
+  promptTemplate: string
+  reviewPromptTemplate: string
+  commitPromptTemplate: string
+  organizePromptTemplate: string
+  discussionPromptTemplate: string
+  worktreeRoot: string
+}
 export interface StateConfig extends Omit<ConfigDto, 'rootDir'> {
   defaultPromptTemplate: string
   defaultReviewPromptTemplate: string
   defaultCommitPromptTemplate: string
+  defaultOrganizePromptTemplate: string
+  defaultDiscussionPromptTemplate: string
   defaultWorktreeRoot: string
 }
 export interface WorkspaceDto {

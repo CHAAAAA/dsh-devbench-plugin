@@ -91,6 +91,12 @@ export function IconReq(props) {
   h('path', { d: 'M8.8 11.6l1.5 1.5 2.7-2.9' }),
   h('path', { d: 'M13.4 13.1h3.1M8.8 16.6h7.7M8.8 19.1h4.8' }))
 }
+/** Chat bubble icon, used by the requirement discussion action. */
+export function IconChat(props) {
+  return h(Svg, { size: props && props.size ? props.size : 16 },
+    h('path', { d: 'M4.5 5.5h15v10h-8.2L7 19v-3.5H4.5z' }),
+    h('path', { d: 'M8.5 9h7M8.5 12h4.5' }))
+}
 /** Sidebar panel with an arrow that points toward the collapse/expand action. */
 export function IconLayoutSidebar(props) {
   const collapsed = props && props.collapsed === true

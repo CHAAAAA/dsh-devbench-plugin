@@ -1,11 +1,14 @@
 import type { Dispose, HostContext, ToolDefinition, ToolResult, ToolExecution } from '../context.js'
 /** Agent tools. Errors become structured {ok:false,message} results. */
-import { AGENT_WRITABLE_STATUS } from '../constants.js'
+import { AGENT_WRITABLE_STATUS, MAX_TITLE_LENGTH } from '../constants.js'
 import { ApiError, apiError, errorMessage } from '../errors.js'
 import { messages } from '../messages/index.js'
 import { buildState } from '../services/state.js'
 import { readConfig, requireRoot } from '../storage/config.js'
+import { ensureWorkspaceFolder } from '../storage/workspaces.js'
 import {
+  createRequirement,
+  detachSessionFromRequirements,
   findLinkedRequirement,
   findRequirementAnywhere,
   updateRequirement,
@@ -165,6 +168,88 @@ export function registerRequirementTools(ctx: HostContext): Dispose {
         ok: true,
         message: text,
         content: formatRequirement(Object.assign({}, found, saved)),
+      })
+    }),
+  }))
+
+  disposers.push(ctx.tools.register({
+    name: 'requirement_create',
+    description: messages.toolCreateDescription,
+    parameters: {
+      type: 'object',
+      properties: {
+        workspace_id: { type: 'string', description: messages.toolWorkspaceIdDescription },
+        title: { type: 'string', description: messages.toolCreateTitleDescription },
+        body: { type: 'string', description: messages.toolCreateBodyDescription },
+      },
+      required: ['workspace_id', 'title'],
+      additionalProperties: false,
+    },
+    output: { schema: TOOL_OUTPUT_SCHEMA, render: renderToolValue },
+    execute: executeTool(ctx, 'requirement_create', async function (args, exec) {
+      const config = await readConfig()
+      if (typeof config.rootDir !== 'string' || config.rootDir.length === 0) {
+        return toolResult({ ok: false, message: messages.toolRootMissing })
+      }
+      if (typeof args.workspace_id !== 'string' || args.workspace_id.length === 0) {
+        throw apiError(400, 'bad-field', messages.invalidField + ': workspace_id')
+      }
+      if (typeof args.title !== 'string') {
+        throw apiError(400, 'bad-field', messages.invalidField + ': title')
+      }
+      const title = args.title.trim()
+      if (title.length === 0) return toolResult({ ok: false, message: messages.missingTitle })
+      if (title.length > MAX_TITLE_LENGTH) {
+        throw apiError(400, 'bad-field', messages.invalidField + ': title')
+      }
+      if (args.body !== undefined && typeof args.body !== 'string') {
+        throw apiError(400, 'bad-field', messages.invalidField + ': body')
+      }
+      const workspaces = typeof ctx.workspaceRegistry.list === 'function'
+        ? ctx.workspaceRegistry.list()
+        : []
+      const workspace = workspaces.find(function (item) {
+        return item && item.id === args.workspace_id
+      }) || null
+      if (workspace === null) return toolResult({ ok: false, message: messages.toolWorkspaceNotFound })
+      const root = config.rootDir
+      const folderInfo = await ensureWorkspaceFolder(root, workspace)
+      const created = await createRequirement(root, workspace, folderInfo, title,
+        typeof args.body === 'string' ? args.body : '')
+      const sessionId = exec && exec.agent && exec.agent.session ? exec.agent.session.id : ''
+      let saved = created.requirement
+      let linkWarning = ''
+      if (typeof sessionId === 'string' && sessionId.length > 0) {
+        try {
+          // A conversation points at one requirement: drop stale links before linking.
+          const detached = await detachSessionFromRequirements(root, sessionId, {
+            workspaceId: workspace.id,
+            id: saved.meta.id,
+          })
+          if (detached.failed.length > 0) {
+            linkWarning = detached.failed.map(function (item) {
+              return item.workspaceId + '/' + item.id + ': ' + item.message
+            }).join('; ')
+          }
+          saved = await updateRequirement(created.requirement, function (latest) {
+            const sessions = latest.meta.sessions.includes(sessionId)
+              ? latest.meta.sessions
+              : latest.meta.sessions.concat([sessionId])
+            return { meta: { sessions } }
+          })
+        } catch (error) {
+          // The requirement exists; a failed link must not fail the whole tool call.
+          linkWarning = errorMessage(error)
+          ctx.logger?.warn?.('devbench-manager: unable to link organized session: ' + linkWarning)
+        }
+      }
+      const content = formatRequirement(saved) +
+        (linkWarning.length > 0 ? '\n\n' + messages.toolLinkWarning + ': ' + linkWarning : '')
+      return toolResult({
+        ok: true,
+        message: messages.toolCreatedPrefix + saved.meta.id +
+          (linkWarning.length > 0 ? ' (' + messages.toolLinkWarning + ')' : ''),
+        content,
       })
     }),
   }))

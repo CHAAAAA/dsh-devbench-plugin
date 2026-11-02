@@ -3,6 +3,8 @@ import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import {
   DEFAULT_COMMIT_PROMPT_TEMPLATE,
+  DEFAULT_DISCUSSION_PROMPT_TEMPLATE,
+  DEFAULT_ORGANIZE_PROMPT_TEMPLATE,
   DEFAULT_PROMPT_TEMPLATE,
   DEFAULT_REVIEW_PROMPT_TEMPLATE,
 } from '../../constants.js'
@@ -78,6 +80,21 @@ export const configRoutes: any[] = [
             throw apiError(400, 'bad-commit-template', messages.badCommitPromptTemplate)
           }
           value.commitPromptTemplate = isDefault ? '' : template
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'organizePromptTemplate')) {
+          const template = readStringField(body, 'organizePromptTemplate', { allowEmpty: true })
+          const trimmed = template.trim()
+          const isDefault = trimmed.length === 0 || trimmed === DEFAULT_ORGANIZE_PROMPT_TEMPLATE
+          if (isDefault === false && trimmed.includes('{workspaceId}') === false) {
+            throw apiError(400, 'bad-organize-template', messages.badOrganizeTemplate)
+          }
+          value.organizePromptTemplate = isDefault ? '' : template
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'discussionPromptTemplate')) {
+          const template = readStringField(body, 'discussionPromptTemplate', { allowEmpty: true })
+          const trimmed = template.trim()
+          const isDefault = trimmed.length === 0 || trimmed === DEFAULT_DISCUSSION_PROMPT_TEMPLATE
+          value.discussionPromptTemplate = isDefault ? '' : template
         }
         if (Object.prototype.hasOwnProperty.call(body, 'worktreeRoot')) {
           const root = readStringField(body, 'worktreeRoot', {

@@ -221,6 +221,63 @@ requirementRoutes.push({
 
 requirementRoutes.push({
   method: 'POST',
+  path: '/requirement/organize',
+  async handle(context) {
+    requireRoot(context.config)
+    const body = await context.readBody()
+    const sessionId = readStringField(body, 'sessionId', {
+      required: true,
+      maxLength: MAX_SESSION_ID_LENGTH,
+      missingCode: 'missing-session',
+      missingMessage: messages.missingSession,
+    })
+    const workspace = findWorkspace(context.ctx, readStringField(body, 'workspaceId', {
+      required: true,
+      missingCode: 'workspace-not-found',
+      missingMessage: messages.workspaceNotFound,
+    }))
+    const titleHint = hasOwn(body, 'titleHint')
+      ? readStringField(body, 'titleHint', { allowEmpty: true, trim: true, maxLength: MAX_TITLE_LENGTH })
+      : ''
+    const workspaceTitle = workspace.title || workspace.path
+    const prompt = renderPrompt(context.config.organizePromptTemplate, {
+      workspaceTitle,
+      workspaceId: workspace.id,
+      sessionId,
+      titleHint: titleHint.length > 0
+        ? '用户建议的标题：' + titleHint
+        : '（用户未指定标题，请根据会话内容拟定。）',
+    })
+    return { prompt, workspaceId: workspace.id, workspaceTitle }
+  },
+})
+
+requirementRoutes.push({
+  method: 'POST',
+  path: '/requirement/discuss',
+  async handle(context) {
+    const root = requireRoot(context.config)
+    const body = await context.readBody()
+    const identity = readIdentity(body)
+    const workspace = findWorkspace(context.ctx, identity.workspaceId)
+    const found = await requireRequirement(root, identity.workspaceId, identity.id)
+    const prompt = renderPrompt(context.config.discussionPromptTemplate, {
+      workspaceTitle: workspace.title || workspace.path,
+      title: found.meta.title,
+      id: found.meta.id,
+      requirementPath: found.file,
+      folderPath: found.folderPath,
+      body: found.body,
+    })
+    return {
+      prompt,
+      requirement: toSummary(found.meta, found.folderPath, identity.workspaceId),
+    }
+  },
+})
+
+requirementRoutes.push({
+  method: 'POST',
   path: '/requirement/delete',
   async handle(context) {
     const root = requireRoot(context.config)
@@ -255,11 +312,21 @@ requirementRoutes.push({
       missingMessage: messages.missingSession,
     })
     const found = await requireRequirement(root, identity.workspaceId, identity.id)
+    const discussion = readBooleanField(body, 'discussion', false) === true
     const saved = await updateRequirement(found, function (latest) {
       const sessions = latest.meta.sessions.includes(sessionId)
         ? latest.meta.sessions
         : latest.meta.sessions.concat([sessionId])
-      return { meta: { sessions } }
+      const extra = Object.assign({}, latest.meta.extra)
+      if (discussion && sessions.includes(sessionId)) {
+        const marked = Array.isArray(extra.discussSessions)
+          ? extra.discussSessions.filter(function (item) {
+            return typeof item === 'string' && item.length > 0
+          })
+          : []
+        if (marked.includes(sessionId) === false) extra.discussSessions = marked.concat([sessionId])
+      }
+      return { meta: { sessions, extra } }
     })
     return {
       requirement: toSummary(saved.meta, found.folderPath, identity.workspaceId),
@@ -307,7 +374,12 @@ requirementRoutes.push({
     const found = await requireRequirement(root, identity.workspaceId, identity.id)
     const saved = await updateRequirement(found, function (latest) {
       const sessions = latest.meta.sessions.filter(function (item) { return item !== sessionId })
-      return { meta: { sessions } }
+      const extra = Object.assign({}, latest.meta.extra)
+      if (Array.isArray(extra.discussSessions)) {
+        extra.discussSessions = extra.discussSessions.filter(function (item) { return item !== sessionId })
+        if (extra.discussSessions.length === 0) delete extra.discussSessions
+      }
+      return { meta: { sessions, extra } }
     })
     return {
       requirement: toSummary(saved.meta, found.folderPath, identity.workspaceId),

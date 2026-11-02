@@ -22,11 +22,15 @@ export function SettingsView(props: {
   const serverTemplate = typeof config.promptTemplate === 'string' ? config.promptTemplate : ''
   const serverReview = typeof config.reviewPromptTemplate === 'string' ? config.reviewPromptTemplate : ''
   const serverCommit = typeof config.commitPromptTemplate === 'string' ? config.commitPromptTemplate : ''
+  const serverOrganize = typeof config.organizePromptTemplate === 'string' ? config.organizePromptTemplate : ''
+  const serverDiscussion = typeof config.discussionPromptTemplate === 'string' ? config.discussionPromptTemplate : ''
   const serverWorktree = typeof config.worktreeRoot === 'string' ? config.worktreeRoot : ''
   const [draftRoot, setDraftRoot] = useState(serverRoot)
   const [template, setTemplate] = useState(serverTemplate)
   const [reviewTemplate, setReviewTemplate] = useState(serverReview)
   const [commitTemplate, setCommitTemplate] = useState(serverCommit)
+  const [organizeTemplate, setOrganizeTemplate] = useState(serverOrganize)
+  const [discussionTemplate, setDiscussionTemplate] = useState(serverDiscussion)
   const [worktreeRoot, setWorktreeRoot] = useState(serverWorktree)
   const [gitState, setGitState] = useState<{ loading: boolean; error: string; data: GitStatus | null }>({ loading: false, error: '', data: null })
   const [commitMessage, setCommitMessage] = useState(t('detail.git.defaultMessage'))
@@ -36,7 +40,7 @@ export function SettingsView(props: {
   const busyRef = useRef(false)
   const gitSeqRef = useRef<{ seq: number } | null>(null)
   if (!gitSeqRef.current) gitSeqRef.current = { seq: 0 }
-  const baselineRef = useRef<{ root: string; template: string; review: string; commit: string; worktree: string } | null>(null)
+  const baselineRef = useRef<{ root: string; template: string; review: string; commit: string; organize: string; discussion: string; worktree: string } | null>(null)
   const leaveRef = useRef(null)
 
   const baseline = baselineRef.current || {
@@ -44,14 +48,19 @@ export function SettingsView(props: {
     template: serverTemplate,
     review: serverReview,
     commit: serverCommit,
+    organize: serverOrganize,
+    discussion: serverDiscussion,
     worktree: serverWorktree.trim(),
   }
   const rootDirty = draftRoot.trim() !== baseline.root
   const templateDirty = template !== baseline.template
   const reviewDirty = reviewTemplate !== baseline.review
   const commitDirty = commitTemplate !== baseline.commit
+  const organizeDirty = organizeTemplate !== baseline.organize
+  const discussionDirty = discussionTemplate !== baseline.discussion
   const worktreeDirty = worktreeRoot.trim() !== baseline.worktree
-  const dirty = rootDirty || templateDirty || reviewDirty || commitDirty || worktreeDirty
+  const dirty = rootDirty || templateDirty || reviewDirty || commitDirty ||
+    organizeDirty || discussionDirty || worktreeDirty
 
   function toast(kind, text) {
     if (typeof props.showToast === 'function') props.showToast(kind, text)
@@ -91,12 +100,16 @@ export function SettingsView(props: {
       template: serverTemplate,
       review: serverReview,
       commit: serverCommit,
+      organize: serverOrganize,
+      discussion: serverDiscussion,
       worktree: serverWorktree.trim(),
     }
     setDraftRoot(serverRoot)
     setTemplate(serverTemplate)
     setReviewTemplate(serverReview)
     setCommitTemplate(serverCommit)
+    setOrganizeTemplate(serverOrganize)
+    setDiscussionTemplate(serverDiscussion)
     setWorktreeRoot(serverWorktree)
     setError('')
   }
@@ -109,6 +122,10 @@ export function SettingsView(props: {
     const required = ['{taskId}', '{changedFiles}', '{diffText}']
     const missing = required.some(function (token) { return commitTemplate.indexOf(token) < 0 })
     return missing === false ? '' : t('settings.commitTemplate.invalid')
+  }
+  function organizeTemplateProblem() {
+    if (organizeTemplate.trim() === '') return ''
+    return organizeTemplate.indexOf('{workspaceId}') >= 0 ? '' : t('settings.organizeTemplate.invalid')
   }
   function confirmPathChanges() {
     function confirmWorktreeChange() {
@@ -148,6 +165,8 @@ export function SettingsView(props: {
       promptTemplate: template,
       reviewPromptTemplate: reviewTemplate,
       commitPromptTemplate: commitTemplate,
+      organizePromptTemplate: organizeTemplate,
+      discussionPromptTemplate: discussionTemplate,
       worktreeRoot: worktreeValue,
     }).then(function () {
       end()
@@ -156,6 +175,8 @@ export function SettingsView(props: {
         template: template,
         review: reviewTemplate,
         commit: commitTemplate,
+        organize: organizeTemplate,
+        discussion: discussionTemplate,
         worktree: worktreeValue,
       }
       setError('')
@@ -172,7 +193,7 @@ export function SettingsView(props: {
   }
   function saveDraft() {
     if (busyRef.current) return Promise.resolve(false)
-    const problem = reviewTemplateProblem() || commitTemplateProblem()
+    const problem = reviewTemplateProblem() || commitTemplateProblem() || organizeTemplateProblem()
     if (problem !== '') {
       setError(problem)
       toast('error', problem)
@@ -214,14 +235,18 @@ export function SettingsView(props: {
       template: serverTemplate,
       review: serverReview,
       commit: serverCommit,
+      organize: serverOrganize,
+      discussion: serverDiscussion,
       worktree: serverWorktree.trim(),
     }
     setDraftRoot(serverRoot)
     setTemplate(serverTemplate)
     setReviewTemplate(serverReview)
     setCommitTemplate(serverCommit)
+    setOrganizeTemplate(serverOrganize)
+    setDiscussionTemplate(serverDiscussion)
     setWorktreeRoot(serverWorktree)
-  }, [serverRoot, serverTemplate, serverReview, serverCommit, serverWorktree])
+  }, [serverRoot, serverTemplate, serverReview, serverCommit, serverOrganize, serverDiscussion, serverWorktree])
   useEffect(function () {
     if (dirty !== true) return undefined
     function guard() {
@@ -258,6 +283,14 @@ export function SettingsView(props: {
   function resetCommitTemplate() {
     if (busyRef.current) return
     setCommitTemplate(typeof config.defaultCommitPromptTemplate === 'string' ? config.defaultCommitPromptTemplate : '')
+  }
+  function resetOrganizeTemplate() {
+    if (busyRef.current) return
+    setOrganizeTemplate(typeof config.defaultOrganizePromptTemplate === 'string' ? config.defaultOrganizePromptTemplate : '')
+  }
+  function resetDiscussionTemplate() {
+    if (busyRef.current) return
+    setDiscussionTemplate(typeof config.defaultDiscussionPromptTemplate === 'string' ? config.defaultDiscussionPromptTemplate : '')
   }
   function initGit() {
     if (!begin()) return
@@ -444,6 +477,32 @@ export function SettingsView(props: {
         t('settings.commitTemplate.reset')),
       h('button', { className: 'devbench-btn primary', disabled: busy, onClick: function () { saveDraft() } },
         busy ? t('settings.saving') : t('settings.save'))))
+  const organizeTemplateSection = h('div', { className: 'devbench-section' },
+    h('div', { className: 'devbench-section-title' }, t('settings.organizeTemplate')),
+    h('textarea', {
+      className: 'devbench-textarea devbench-mono', rows: 12, value: organizeTemplate,
+      disabled: busy,
+      onChange(event) { setOrganizeTemplate(event.target.value) },
+    }),
+    h('div', { className: 'devbench-hint' }, t('settings.organizeTemplate.hint')),
+    h('div', { className: 'devbench-inline', style: { marginTop: '10px' } },
+      h('button', { className: 'devbench-btn', disabled: busy, onClick: resetOrganizeTemplate },
+        t('settings.organizeTemplate.reset')),
+      h('button', { className: 'devbench-btn primary', disabled: busy, onClick: function () { saveDraft() } },
+        busy ? t('settings.saving') : t('settings.save'))))
+  const discussionTemplateSection = h('div', { className: 'devbench-section' },
+    h('div', { className: 'devbench-section-title' }, t('settings.discussionTemplate')),
+    h('textarea', {
+      className: 'devbench-textarea devbench-mono', rows: 12, value: discussionTemplate,
+      disabled: busy,
+      onChange(event) { setDiscussionTemplate(event.target.value) },
+    }),
+    h('div', { className: 'devbench-hint' }, t('settings.discussionTemplate.hint')),
+    h('div', { className: 'devbench-inline', style: { marginTop: '10px' } },
+      h('button', { className: 'devbench-btn', disabled: busy, onClick: resetDiscussionTemplate },
+        t('settings.discussionTemplate.reset')),
+      h('button', { className: 'devbench-btn primary', disabled: busy, onClick: function () { saveDraft() } },
+        busy ? t('settings.saving') : t('settings.save'))))
   const defaultWorktreeRoot = typeof config.defaultWorktreeRoot === 'string' ? config.defaultWorktreeRoot : ''
   const worktreeRootSection = h('div', { className: 'devbench-section' },
     h('div', { className: 'devbench-section-title' }, t('settings.worktree.root')),
@@ -482,6 +541,8 @@ export function SettingsView(props: {
     templateSection,
     reviewTemplateSection,
     commitTemplateSection,
+    organizeTemplateSection,
+    discussionTemplateSection,
     worktreeRootSection,
     gitSection())
 }

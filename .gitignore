@@ -10,6 +10,7 @@ coverage/
 .dsh-reviews/
 
 # Local environment / credentials.
+doc/
 .env
 .env.*
 .npmrc.local

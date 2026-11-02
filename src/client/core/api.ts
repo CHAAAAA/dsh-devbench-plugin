@@ -96,10 +96,18 @@ export function saveRequirement(payload: Api.SaveRequirementRequest, opts?: Requ
 export function executeRequirement(payload: Api.RequirementSelection & { markRunning?: boolean }, opts?: RequestOptions): Promise<{ prompt: string; requirement: Api.RequirementSummary; worktree: Api.RequirementWorktree | null; cwd?: string }> {
   return request('/requirement/execute', payload, opts)
 }
+/** Build the prompt that asks the current session Agent to organize it into a requirement. */
+export function organizeRequirement(payload: Api.OrganizeRequirementRequest, opts?: RequestOptions): Promise<Api.OrganizeRequirementResponse> {
+  return request('/requirement/organize', payload, opts)
+}
+/** Build the discussion prompt for an existing requirement (the browser links the new session). */
+export function discussRequirement(payload: Api.RequirementSelection, opts?: RequestOptions): Promise<Api.DiscussionPromptResponse> {
+  return request('/requirement/discuss', payload, opts)
+}
 export function deleteRequirement(payload: Api.RequirementSelection, opts?: RequestOptions): Promise<{ deleted: boolean; filesPreserved: boolean; id: string; folder: string }> {
   return request('/requirement/delete', payload, opts)
 }
-export function linkSession(payload: Api.RequirementSelection & { sessionId: string }, opts?: RequestOptions): Promise<{ requirement: Api.RequirementSummary }> {
+export function linkSession(payload: Api.RequirementSelection & { sessionId: string; discussion?: boolean }, opts?: RequestOptions): Promise<{ requirement: Api.RequirementSummary }> {
   return request('/requirement/link-session', payload, opts)
 }
 export function unlinkSession(payload: Api.RequirementSelection & { sessionId: string }, opts?: RequestOptions): Promise<{ requirement: Api.RequirementSummary }> {
