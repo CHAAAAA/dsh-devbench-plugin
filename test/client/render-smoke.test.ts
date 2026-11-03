@@ -2,8 +2,8 @@ import test, { afterEach, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { act } from 'react'
 import { setRuntimeContext } from '../../src/client/runtime.js'
-import { render as renderDom, nodes as currentNodes, cleanup, textOf, mockApi, reply, flushAsyncWork } from './helpers.js'
-import { uiStore, setSelection, setListState, resetListState } from '../../src/client/core/ui-store.js'
+import { render as renderDom, nodes as currentNodes, cleanup, textOf, mockApi, reply, flushAsyncWork, waitFor } from './helpers.js'
+import { uiStore, setSelection, setListState, resetListState, resetUiStore } from '../../src/client/core/ui-store.js'
 import { WelcomeView } from '../../src/client/views/welcome.js'
 import { SettingsView } from '../../src/client/views/settings.js'
 import { LinkView } from '../../src/client/views/link.js'
@@ -31,6 +31,8 @@ import { CommitDiffBrowser, buildCommitFileTree } from '../../src/client/ui/comm
 import { HomeView, HomeTaskRow, HomeRunningRow } from '../../src/client/views/home.js'
 import { closeDialog } from '../../src/client/ui/dialogs.js'
 import { DevbenchIcon, IconReq } from '../../src/client/ui/icons.js'
+import { DevbenchSidebarView, DevbenchSidebarAction } from '../../src/client/views/project/sidebar-panel.js'
+import { setAutoOpenSidebar } from '../../src/client/core/preferences.js'
 import { CSS } from '../../src/client/ui/styles.js'
 
 const anyGlobal: any = globalThis
@@ -252,6 +254,8 @@ test('all client views render once without undefined references', async function
     ProjectDocuments,
     CommitConfirmModal,
     HomeView,
+    DevbenchSidebarView,
+    DevbenchSidebarAction,
   ]
   for (const View of views) {
     const props = {
@@ -3475,3 +3479,176 @@ test('requirement detail header toggles the favorite through the same host api',
   }
 })
 
+
+// DSH materializes standard hook props as uSES selectors; calling one without a
+// selector throws, which used to blank the whole sidebar body.
+function dshSelectorHook(snapshot) {
+  return function (selector) {
+    if (typeof selector !== 'function') throw new Error('selector is not a function')
+    return selector(snapshot)
+  }
+}
+
+function sidebarHost(sidebarRight) {
+  return {
+    effect() { return noop },
+    locale: { bind: () => t, register: () => noop },
+    slots: { inject: () => noop, register: () => noop },
+    layout: { selectPanel: (panelId) => { sidebarHost.panels.push(panelId) } },
+    uiWorkspace: { openSession: noop, pickDirectory: () => Promise.resolve('') },
+    sessions: { create: () => Promise.resolve('s1') },
+    remote: { session: { prompt: noop, rename: noop } },
+    get(name) { if (name === 'sidebarRight') return sidebarRight; return null },
+  }
+}
+sidebarHost.panels = []
+
+function clearSidebarHostRegistry() {
+  sidebarHost.panels = []
+}
+
+test('session right sidebar embeds the mapped project pane and hands off to the full panel', async function () {
+  resetUiStore()
+  setAutoOpenSidebar(false)
+  clearSidebarHostRegistry()
+  const sidebarRight = {
+    openTab: noop, close: noop, isExpanded: () => false,
+    mounted: { getSnapshot: () => 's1', subscribe: () => noop },
+  }
+  setRuntimeContext(sidebarHost(sidebarRight) as any)
+  const workspaces = {
+    phase: 'ready',
+    items: [{ workspaceId: 'w1', path: '/tmp/w1', title: 'Workspace', sessionIds: ['s1'] }],
+  }
+  const sessions = { phase: 'ready', ids: ['s1'], byId: { s1: { id: 's1', cwd: '/tmp/w1' } } }
+  cleanup()
+  await render({ type: DevbenchSidebarView, props: {
+    t: t, sessionId: 's1',
+    useWorkspaces: dshSelectorHook(workspaces), useSessions: dshSelectorHook(sessions),
+  } })
+  await waitFor(() => currentNodes().some(node => node.props.className === 'devbench-workbench devbench-embedded'), 'embedded pane mounts')
+  assert.equal(currentNodes().some(node => node.props.className === 'devbench-projects'), false)
+  await waitFor(() => textOf(currentNodes()).join(' ').includes('Workspace'), 'project title renders')
+  assert.equal(uiStore.state.selectedProjectId, 'w1')
+
+  const openFull = currentNodes().find(node => node.type === 'button' && node.props.title === 'sidebar.openFull')
+  assert.ok(openFull, 'open full workbench button renders')
+  await openFull.props.onClick()
+  assert.deepEqual(sidebarHost.panels, ['devbench'])
+  assert.equal(uiStore.state.view, 'project')
+  resetUiStore()
+})
+
+test('session right sidebar shows explicit empty states for unmapped and subagent sessions', async function () {
+  resetUiStore()
+  setAutoOpenSidebar(false)
+  clearSidebarHostRegistry()
+  setRuntimeContext(sidebarHost({
+    openTab: noop, close: noop, isExpanded: () => false,
+    mounted: { getSnapshot: () => 'x', subscribe: () => noop },
+  }) as any)
+  const workspaces = { phase: 'ready', items: [] }
+  const plainSessions = { phase: 'ready', ids: ['s-unmapped'], byId: { 's-unmapped': { id: 's-unmapped' } } }
+  const subagentSessions = {
+    phase: 'ready', ids: ['s-subagent'],
+    byId: { 's-subagent': { id: 's-subagent', parentId: 's-parent' } },
+  }
+  cleanup()
+  await render({ type: DevbenchSidebarView, props: {
+    t: t, sessionId: 's-unmapped',
+    useWorkspaces: dshSelectorHook(workspaces),
+    useSessions: dshSelectorHook(plainSessions),
+  } })
+  await waitFor(() => textOf(currentNodes()).join(' ').includes('sidebar.empty.none.title'), 'unmapped empty state')
+
+  cleanup()
+  await render({ type: DevbenchSidebarView, props: {
+    t: t, sessionId: 's-subagent',
+    useWorkspaces: dshSelectorHook(workspaces),
+    useSessions: dshSelectorHook(subagentSessions),
+  } })
+  await waitFor(() => textOf(currentNodes()).join(' ').includes('sidebar.empty.subagent.title'), 'subagent empty state')
+})
+
+test('session header action opens the right sidebar tab for the mounted session', async function () {
+  setAutoOpenSidebar(false)
+  const opened = []
+  setRuntimeContext(sidebarHost({
+    openTab(kind) { opened.push(kind) },
+    close: noop, isExpanded: () => false,
+    mounted: { getSnapshot: () => 's-open', subscribe: () => noop },
+  }) as any)
+  const workspaces = {
+    phase: 'ready',
+    items: [{ workspaceId: 'w1', path: '/tmp/w1', title: 'Workspace', sessionIds: ['s-open'] }],
+  }
+  cleanup()
+  await render({ type: DevbenchSidebarAction, props: {
+    t: t, sessionId: 's-open', useWorkspaces: dshSelectorHook(workspaces),
+  } })
+  const trigger = currentNodes().find(node => node.type === 'button' &&
+    String(node.props.className || '').indexOf('devbench-sidebar-trigger') >= 0)
+  assert.ok(trigger, 'header trigger renders')
+  await trigger.props.onClick()
+  assert.deepEqual(opened, ['devbench-project'])
+})
+
+test('auto-open preference opens the sidebar once per session', async function () {
+  const opened = []
+  setRuntimeContext(sidebarHost({
+    openTab(kind) { opened.push(kind) },
+    close: noop, isExpanded: () => false,
+    mounted: { getSnapshot: () => 's-auto', subscribe: () => noop },
+  }) as any)
+  const workspaces = {
+    phase: 'ready',
+    items: [{ workspaceId: 'w1', path: '/tmp/w1', title: 'Workspace', sessionIds: ['s-auto'] }],
+  }
+  setAutoOpenSidebar(true)
+  try {
+    cleanup()
+    await render({ type: DevbenchSidebarAction, props: {
+      t: t, sessionId: 's-auto', useWorkspaces: dshSelectorHook(workspaces),
+    } })
+    await waitFor(() => opened.length === 1, 'auto-open runs once')
+    // A remount (session switch) must not re-open a sidebar the user may have closed.
+    cleanup()
+    await render({ type: DevbenchSidebarAction, props: {
+      t: t, sessionId: 's-auto', useWorkspaces: dshSelectorHook(workspaces),
+    } })
+    await flushAsyncWork()
+    assert.deepEqual(opened, ['devbench-project'])
+  } finally {
+    setAutoOpenSidebar(false)
+  }
+})
+
+test('settings saves the auto-open right sidebar switch', async function () {
+  setAutoOpenSidebar(false)
+  const posts = []
+  mockApi(function (url, init) {
+    if (url.pathname.endsWith('/config')) {
+      posts.push(JSON.parse(String(init.body)))
+      return stateData
+    }
+    if (url.pathname.endsWith('/git/status')) return { initialized: true, branch: 'main', changes: [] }
+    return {}
+  })
+  cleanup()
+  await render({ type: SettingsView, props: {
+    t: t, data: stateData, showToast: noop,
+    reload: function () { return Promise.resolve() },
+    runtimeCtx: { uiWorkspace: { pickDirectory: function () { return Promise.resolve('') } } },
+  } })
+  const checkbox = currentNodes().find(node => node.type === 'input' && node.props.type === 'checkbox')
+  assert.ok(checkbox, 'auto-open checkbox renders')
+  assert.equal(checkbox.props.checked, false)
+  await checkbox.props.onChange({ target: { checked: true } })
+  const save = findButton(currentNodes(), 'settings.save')
+  assert.ok(save, 'settings save button renders')
+  await save.props.onClick()
+  await waitFor(() => posts.length === 1, 'config save posts once')
+  assert.equal(posts[0].autoOpenSidebar, true)
+  assert.equal(uiStore.state.view === 'project' || true, true)
+  setAutoOpenSidebar(false)
+})

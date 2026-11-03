@@ -1,6 +1,6 @@
 import {
   h, getFragment, getRuntimeContext, useState, useEffect, useRef,
-  errorText, isAbortError, t as translate,
+  errorText, isAbortError, t as translate, PANEL_ID,
 } from '../../runtime.js'
 import type { ReactElement } from 'react'
 import type { Translate } from '../../runtime.js'
@@ -19,7 +19,7 @@ import {
 } from '../../core/project-utils.js'
 import { createTaskRequestGate } from '../../core/task-request-gate.js'
 import { Banner, Breadcrumb, Styles } from '../../ui/common.js'
-import { IconRefresh, IconCode, IconFolder, IconTerminal, IconLayoutSidebar } from '../../ui/icons.js'
+import { IconRefresh, IconCode, IconFolder, IconTerminal, IconLayoutSidebar, IconExternal } from '../../ui/icons.js'
 import { ProjectSidebar } from './sidebar.js'
 import { ProjectOverview } from './overview.js'
 import { ProjectCommits } from './commits.js'
@@ -48,8 +48,24 @@ const TAB_LABEL_KEYS = {
   reviews: 'project.tab.reviews',
   tasks: 'project.tab.tasks',
 }
-export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: SessionsHook }): ReactElement {
+export interface ProjectDevbenchPageProps {
+  t?: Translate
+  useSessions?: SessionsHook
+  /**
+   * Right-sidebar mode: render only the project pane for a fixed project, without the
+   * project rail, the breadcrumb or the global sub-pages. The session right sidebar owns
+   * the surrounding frame, so this mode keeps the project header + tab strip + tab body.
+   */
+  embedded?: boolean
+  /** Project id fixed by the owning session when `embedded` is true. */
+  projectId?: string | null
+  /** Project title/path from the session's DSH workspace, shown before data loads. */
+  projectTitle?: string
+  projectPath?: string
+}
+export function ProjectDevbenchPage(props: ProjectDevbenchPageProps): ReactElement {
   const t = props.t || translate
+  const embedded = props.embedded === true
   const ui = useUiState()
   const pluginVersion = usePluginVersion()
   const [state, setState] = useState<{ data: StateDto | null; loading: boolean; error: string }>({ data: null, loading: true, error: '' })
@@ -108,6 +124,9 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
   const activeCommitTask = activeTaskList.find(function (task) { return task.kind === 'commit' }) || null
   activeTasksRef.current = activeTaskList
   const activeTab = ui.activeTab || 'overview'
+  // Embedded (right-sidebar) mode always renders the project pane; global sub-pages like
+  // settings/home are handed over to the full workbench panel instead.
+  const view = embedded === true ? 'project' : ui.view
   const sidebarVisible = ui.projectSidebarVisible !== false
   const awaitingCommitTask = findAwaitingCommitTask(effectiveTaskList)
   function showToast(kind, text, options?) { return pushToast(kind, text, options) }
@@ -155,13 +174,32 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
     }
     navigateBack({ view: 'project', selectedRequirement: null }).catch(function () {})
   }
+  /** Hand a global sub-page to the full workbench panel (the sidebar only shows the project). */
+  function openGlobalPanel(patch) {
+    const next = Object.assign({
+      view: 'project',
+      selectedProjectId: selectedProjectId,
+      selectedRequirement: null,
+    }, patch)
+    uiStore.set(next)
+    const ctx = getRuntimeContext()
+    if (ctx && ctx.layout && typeof ctx.layout.selectPanel === 'function') {
+      ctx.layout.selectPanel(PANEL_ID)
+    }
+  }
+  function openFullWorkbench() {
+    openGlobalPanel({ activeTab: activeTab })
+  }
   function openSettings() {
+    if (embedded === true) { openGlobalPanel({ view: 'settings' }); return }
     applyView({ view: 'settings' }, { history: true })
   }
   function openHome() {
+    if (embedded === true) { openGlobalPanel({ view: 'home' }); return }
     applyView({ view: 'home', selectedRequirement: null }, { history: true })
   }
   function openMcp() {
+    if (embedded === true) { openGlobalPanel({ view: 'mcp' }); return }
     applyView({ view: 'mcp', selectedRequirement: null }, { history: true })
   }
   function openTaskSession(sessionId) {
@@ -218,7 +256,9 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
       setState({ data: next, loading: false, error: '' })
       const selected = uiStore.state.selectedProjectId
       const exists = next.workspaces.some(function (item) { return item.workspaceId === selected })
-      if (exists === false) {
+      // Embedded mode keeps the session's project even when the registry no longer lists
+      // it, so the sidebar can show its own empty state instead of jumping to another project.
+      if (exists === false && embedded !== true) {
         const first = next.workspaces[0]
         uiStore.set({
           selectedProjectId: first ? first.workspaceId : null,
@@ -310,6 +350,16 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
     })
   }
   useEffect(function () { loadState().catch(function () {}) }, [])
+  // Embedded mode owns one project: keep the global selection aligned with the session so
+  // the existing loaders, tab state and "open full workbench" all target that project.
+  useEffect(function () {
+    if (embedded !== true) return
+    const target = typeof props.projectId === 'string' ? props.projectId : ''
+    if (target === '') return
+    const current = uiStore.state
+    if (current.view === 'project' && current.selectedProjectId === target) return
+    uiStore.set({ view: 'project', selectedProjectId: target, selectedRequirement: null })
+  }, [embedded, props.projectId])
   useEffect(function () {
     let cancelled = false
     api.getProjectOpenTargets().then(function (value) {
@@ -854,10 +904,16 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
     if (overviewGit.head) gitStatus.push(h('span', { className: 'devbench-mono', key: 'head' }, String(overviewGit.head).slice(0, 8)))
     gitStatus.push(h('span', { className: 'devbench-pill', key: 'changes' }, t('project.changes', { count: changes.length })))
   }
-  const projectTitle = currentOverview && currentOverview.project ? currentOverview.project.title : (currentWorkspace ? currentWorkspace.title : '')
+  const projectTitle = currentOverview && currentOverview.project
+    ? currentOverview.project.title
+    : (currentWorkspace
+      ? currentWorkspace.title
+      : (typeof props.projectTitle === 'string' ? props.projectTitle : ''))
   const projectPath = currentOverview && currentOverview.project
     ? currentOverview.project.canonicalPath
-    : (currentWorkspace ? currentWorkspace.path : '')
+    : (currentWorkspace
+      ? currentWorkspace.path
+      : (typeof props.projectPath === 'string' ? props.projectPath : ''))
   const requirements = currentWorkspace && Array.isArray(currentWorkspace.requirements) ? currentWorkspace.requirements : []
   const reviews = currentOverview && Array.isArray(currentOverview.reviews) ? currentOverview.reviews : []
   const overviewCommits = currentOverview && Array.isArray(currentOverview.commits) ? currentOverview.commits : []
@@ -1043,7 +1099,7 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
   const tabBody = isMasterTab
     ? h('div', { className: 'devbench-tab-flush' }, tabContent)
     : h('div', { className: 'devbench-tab-body' }, tabContent)
-  const commitNotice = awaitingCommitTask !== null && commitModal === null && ui.view === 'project'
+  const commitNotice = awaitingCommitTask !== null && commitModal === null && view === 'project'
     ? h('div', { className: 'devbench-notice' },
       h('span', { className: 'devbench-pill awaiting_confirmation' }, t('status.awaiting_confirmation')),
       h('span', { className: 'devbench-hint', title: awaitingCommitTask.commitSubject || awaitingCommitTask.proposedMessage || '' },
@@ -1060,7 +1116,7 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
     ]
   }
   let mainPane
-  if (ui.view === 'settings') {
+  if (view === 'settings') {
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
         h(Breadcrumb, { items: simpleBreadcrumb(t('breadcrumb.settings')) })),
@@ -1069,7 +1125,7 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
           data: state.data, t: t, reload: loadState, showToast: showToast,
           runtimeCtx: getRuntimeContext(), onBack: backToProject,
         })))
-  } else if (ui.view === 'link') {
+  } else if (view === 'link') {
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
         h(Breadcrumb, { items: simpleBreadcrumb(t('breadcrumb.link')) })),
@@ -1079,7 +1135,7 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
           sessionId: ui.linkSessionId,
           onPick: linkSessionToRequirement, onCancel: backToProject,
         })))
-  } else if (ui.view === 'home') {
+  } else if (view === 'home') {
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
         h(Breadcrumb, { items: simpleBreadcrumb(t('home.title')) })),
@@ -1093,18 +1149,40 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
           showToast: showToast,
           useSessions: props.useSessions,
         })))
-  } else if (ui.view === 'mcp') {
+  } else if (view === 'mcp') {
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
         h(Breadcrumb, { items: simpleBreadcrumb(t('breadcrumb.mcp')) })),
       h('div', { className: 'devbench-tab-body' },
         h(McpView, { t: t, showToast: showToast })))
   } else if (currentWorkspace === null) {
-    mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
-      h('div', { className: 'devbench-page-head' },
-        h(Breadcrumb, { items: simpleBreadcrumb(t('breadcrumb.project')) })),
-      h('div', { className: 'devbench-tab-body' },
-        h('div', { className: 'devbench-empty-panel', style: { marginTop: '40px' } }, t('project.selectHint'))))
+    if (embedded === true) {
+      mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
+        h('div', { className: 'devbench-page-head' },
+          h('div', { className: 'devbench-project-header devbench-page-title-row' },
+            h('div', { style: { flex: 1, minWidth: 0 } },
+              h('div', { className: 'devbench-page-title', title: projectTitle }, projectTitle),
+              h('div', { className: 'devbench-page-meta' },
+                h('span', { className: 'devbench-mono', title: projectPath }, projectPath))),
+            h('div', { className: 'devbench-page-actions' },
+              h('button', {
+                className: 'devbench-icon-btn',
+                title: t('sidebar.openFull'),
+                'aria-label': t('sidebar.openFull'),
+                onClick: openFullWorkbench,
+              }, h(IconExternal, { size: 15 }))))),
+        h('div', { className: 'devbench-tab-body' },
+          h('div', { className: 'devbench-empty-panel devbench-sidebar-empty', style: { marginTop: '24px' } },
+            h('div', { className: 'devbench-sidebar-empty-title' }, t('sidebar.empty.unavailable.title')),
+            h('div', { className: 'devbench-hint' }, t('sidebar.empty.unavailable.body')),
+            h('button', { className: 'devbench-btn', onClick: refreshAll }, t('panel.retry')))))
+    } else {
+      mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
+        h('div', { className: 'devbench-page-head' },
+          h(Breadcrumb, { items: simpleBreadcrumb(t('breadcrumb.project')) })),
+        h('div', { className: 'devbench-tab-body' },
+          h('div', { className: 'devbench-empty-panel', style: { marginTop: '40px' } }, t('project.selectHint'))))
+    }
   } else {
     const projectBreadcrumb = [
       { label: t('breadcrumb.workbench'), onClick: openHome },
@@ -1113,7 +1191,7 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
     ]
     mainPane = h('div', { className: 'devbench-page devbench-workbench-main' },
       h('div', { className: 'devbench-page-head' },
-        h(Breadcrumb, { items: projectBreadcrumb }),
+        embedded === true ? null : h(Breadcrumb, { items: projectBreadcrumb }),
         h('div', { className: 'devbench-project-header devbench-page-title-row' },
           h('div', { style: { flex: 1, minWidth: 0 } },
             h('div', { className: 'devbench-page-title', title: projectTitle }, projectTitle),
@@ -1124,6 +1202,15 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
                 : null,
               gitStatus)),
           h('div', { className: 'devbench-page-actions' },
+            embedded === true
+              ? h('button', {
+                key: 'open-full',
+                className: 'devbench-icon-btn',
+                title: t('sidebar.openFull'),
+                'aria-label': t('sidebar.openFull'),
+                onClick: openFullWorkbench,
+              }, h(IconExternal, { size: 15 }))
+              : null,
             (openTargets.length > 0 ? openTargets : ['system']).map(function (target) {
               const Icon = OPEN_TARGET_ICONS[target]
               if (Icon === undefined) return null
@@ -1146,9 +1233,12 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
   // The update badge floats in the top-right corner of every sub page; the
   // wrapper reserves its width so the existing page-head actions stay clickable.
   const updateBadgeMode = pluginUpdateBadgeMode(pluginVersion.info, pluginVersion.upgrading)
-  const paneWithUpdate = h('div', {
-    className: 'devbench-main-wrap' + (updateBadgeMode === '' ? '' : ' has-plugin-update'),
-  }, mainPane, h(PluginUpdateBadge, { t: t }))
+  // The sidebar pane has no room for the floating update badge; the full panel keeps it.
+  const paneWithUpdate = embedded === true
+    ? mainPane
+    : h('div', {
+      className: 'devbench-main-wrap' + (updateBadgeMode === '' ? '' : ' has-plugin-update'),
+    }, mainPane, h(PluginUpdateBadge, { t: t }))
   const commitModalElement = h(CommitConfirmModal, {
     t: t, modal: commitModal,
     projectTitle: projectTitle,
@@ -1160,21 +1250,23 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
     onCancelTask: cancelCommitTask,
   })
   let content
+  const rootClass = 'devbench-root' + (embedded === true ? ' devbench-embedded-root' : '')
   if (state.loading && state.data === null) {
-    content = h('div', { className: 'devbench-root' },
+    content = h('div', { className: rootClass },
       h(Styles), h('div', { className: 'devbench-loading' }, t('panel.loading')))
   } else if (state.error && state.data === null) {
-    content = h('div', { className: 'devbench-root' },
+    content = h('div', { className: rootClass },
       h(Styles),
       h('div', { style: { padding: '30px' } },
         h(Banner, { kind: 'error' }, state.error),
         h('button', { className: 'devbench-btn', onClick: refreshAll }, t('panel.retry'))))
   } else {
     content = h('div', {
-      className: 'devbench-workbench' + (sidebarVisible ? '' : ' sidebar-hidden'),
+      className: 'devbench-workbench' +
+        (embedded === true ? ' devbench-embedded' : (sidebarVisible ? '' : ' sidebar-hidden')),
     },
     h(Styles),
-    sidebarVisible
+    embedded !== true && sidebarVisible
       ? h(ProjectSidebar, {
         t: t, projects: projects,
         selectedProjectId: selectedProjectId,
@@ -1184,13 +1276,16 @@ export function ProjectDevbenchPage(props: { t?: Translate; useSessions?: Sessio
         onHome: openHome,
         onCollapse() { setSidebarVisible(false) },
       })
-      : h('button', {
+      : null,
+    embedded !== true && sidebarVisible !== true
+      ? h('button', {
         className: 'devbench-sidebar-reveal',
         type: 'button',
         title: t('project.sidebar.expand'),
         'aria-label': t('project.sidebar.expand'),
         onClick() { setSidebarVisible(true) },
-      }, h(IconLayoutSidebar, { size: 15, collapsed: true })),
+      }, h(IconLayoutSidebar, { size: 15, collapsed: true }))
+      : null,
     paneWithUpdate)
   }
   return h(getFragment(), null, content, commitModalElement,

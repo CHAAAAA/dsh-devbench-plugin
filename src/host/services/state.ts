@@ -96,6 +96,7 @@ export async function buildState(ctx: HostContext, config: ConfigDto): Promise<S
       defaultDiscussionPromptTemplate: DEFAULT_DISCUSSION_PROMPT_TEMPLATE,
       worktreeRoot: config.worktreeRoot || '',
       defaultWorktreeRoot: defaultWorktreeRoot(),
+      autoOpenSidebar: config.autoOpenSidebar === true,
     },
     workspaces: workspaceDtos,
   }

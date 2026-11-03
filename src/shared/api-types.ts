@@ -71,6 +71,8 @@ export interface ConfigDto {
   organizePromptTemplate: string
   discussionPromptTemplate: string
   worktreeRoot: string
+  /** Expand the DevBench sidebar automatically for project sessions (default false). */
+  autoOpenSidebar: boolean
 }
 export interface StateConfig extends Omit<ConfigDto, 'rootDir'> {
   defaultPromptTemplate: string

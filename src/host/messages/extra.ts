@@ -168,4 +168,5 @@ export const extraMessages: Record<string, string> = Object.freeze({
   updateEnvironmentUnavailable: "当前 DSH 环境未提供 profile 信息，无法自动升级；请手动执行升级命令",
   updateInstallFailed: "升级安装失败",
   updateVersionMismatch: "升级后安装的版本与目标版本不一致，可能是 npm 源尚未同步或新版本仍在等待期，请稍后重试",
+  autoOpenSidebarInvalid: "自动展开侧边栏设置必须是布尔值",
 })

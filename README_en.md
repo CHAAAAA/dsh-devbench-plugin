@@ -14,7 +14,8 @@
 
 ## Features
 
-- **Project workbench**: a three-pane master-detail layout (project tree, list, detail) with Overview, Requirements, Documents, Commits, Worktrees, Reviews, and Tasks tabs, plus breadcrumbs and view history.
+- **Project workbench**: a master-detail layout (project tree, detail) with Overview, Requirements, Documents, Commits, Worktrees, Reviews, and Tasks tabs, plus breadcrumbs and view history.
+- **Session sidebar**: inside a project session, click the DevBench button in the session header or the DevBench card on the right sidebar's guide page to open the current session's project in the right sidebar (the same content as the workbench's right side: Overview, Requirements, Documents, Commits, Worktrees, Reviews, Tasks). A button switches back to the full workbench, and the right sidebar layout is remembered per session. Sessions that cannot be mapped to a project (subagent or ungrouped sessions) show an explicit empty state. **Settings → Interface** offers **Auto-open the DevBench sidebar in project sessions** (off by default, at most once per session).
 - **Requirements**: Markdown requirements per workspace with title, status, body, attachment files, related sessions, and related commits. The list supports title and full-text search (full-text matches show a body snippet), draft recovery, an unsaved-changes guard, and save conflict handling. **Discuss requirement** creates a linked session for a requirement so you can clarify it with the Agent and let the Agent update the body directly; the discussion prompt template is configurable in Settings.
 - **Project documents**: every project has a **Documents** tab for simple notes such as release procedures or reusable prompts. Documents are stored as Markdown files in the `.documents/` directory of the project's directory inside the requirements root directory, so they never enter the project repository. The list shows titles only and supports title and full-text search; editing uses the same Markdown editor with live preview as requirements.
 - **Markdown preview**: requirement bodies, project documents, code reviews, and weekly reports render headings, lists, quotes, code blocks, links, and GFM tables (with left, center, or right alignment).
@@ -68,6 +69,7 @@ Keep the tarball file: the profile dependency records its `file:` absolute path.
 
 1. Open **Settings → Requirements root directory** and select or create the directory that stores requirement and document data.
 2. Open **DevBench** in the sidebar, add a local Git repository as a project, and start working in its tabs.
+3. Afterwards, inside a project session, open that project's workbench from the DevBench button in the session header or the DevBench card on the right sidebar; turn on the switch under **Settings → Interface** if you want it to open automatically.
 
 ## Development and collaboration
 

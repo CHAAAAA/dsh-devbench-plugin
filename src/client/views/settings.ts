@@ -7,6 +7,7 @@ import { gitStatus, gitInit, gitCommit, saveConfig } from '../core/api.js'
 import { Banner } from '../ui/common.js'
 import { confirmDialog, choiceDialog } from '../ui/dialogs.js'
 import { setLeaveGuard, clearLeaveGuard } from '../core/navigation.js'
+import { setAutoOpenSidebar as cacheAutoOpenSidebar } from '../core/preferences.js'
 
 const GIT_FILE_LIMIT = 40
 
@@ -25,6 +26,7 @@ export function SettingsView(props: {
   const serverOrganize = typeof config.organizePromptTemplate === 'string' ? config.organizePromptTemplate : ''
   const serverDiscussion = typeof config.discussionPromptTemplate === 'string' ? config.discussionPromptTemplate : ''
   const serverWorktree = typeof config.worktreeRoot === 'string' ? config.worktreeRoot : ''
+  const serverAutoOpenSidebar = config.autoOpenSidebar === true
   const [draftRoot, setDraftRoot] = useState(serverRoot)
   const [template, setTemplate] = useState(serverTemplate)
   const [reviewTemplate, setReviewTemplate] = useState(serverReview)
@@ -32,6 +34,7 @@ export function SettingsView(props: {
   const [organizeTemplate, setOrganizeTemplate] = useState(serverOrganize)
   const [discussionTemplate, setDiscussionTemplate] = useState(serverDiscussion)
   const [worktreeRoot, setWorktreeRoot] = useState(serverWorktree)
+  const [autoOpenSidebar, setAutoOpenSidebar] = useState(serverAutoOpenSidebar)
   const [gitState, setGitState] = useState<{ loading: boolean; error: string; data: GitStatus | null }>({ loading: false, error: '', data: null })
   const [commitMessage, setCommitMessage] = useState(t('detail.git.defaultMessage'))
   const [busy, setBusy] = useState(false)
@@ -40,7 +43,7 @@ export function SettingsView(props: {
   const busyRef = useRef(false)
   const gitSeqRef = useRef<{ seq: number } | null>(null)
   if (!gitSeqRef.current) gitSeqRef.current = { seq: 0 }
-  const baselineRef = useRef<{ root: string; template: string; review: string; commit: string; organize: string; discussion: string; worktree: string } | null>(null)
+  const baselineRef = useRef<{ root: string; template: string; review: string; commit: string; organize: string; discussion: string; worktree: string; autoOpen: boolean } | null>(null)
   const leaveRef = useRef(null)
 
   const baseline = baselineRef.current || {
@@ -51,6 +54,7 @@ export function SettingsView(props: {
     organize: serverOrganize,
     discussion: serverDiscussion,
     worktree: serverWorktree.trim(),
+    autoOpen: serverAutoOpenSidebar,
   }
   const rootDirty = draftRoot.trim() !== baseline.root
   const templateDirty = template !== baseline.template
@@ -59,8 +63,9 @@ export function SettingsView(props: {
   const organizeDirty = organizeTemplate !== baseline.organize
   const discussionDirty = discussionTemplate !== baseline.discussion
   const worktreeDirty = worktreeRoot.trim() !== baseline.worktree
+  const autoOpenDirty = autoOpenSidebar !== baseline.autoOpen
   const dirty = rootDirty || templateDirty || reviewDirty || commitDirty ||
-    organizeDirty || discussionDirty || worktreeDirty
+    organizeDirty || discussionDirty || worktreeDirty || autoOpenDirty
 
   function toast(kind, text) {
     if (typeof props.showToast === 'function') props.showToast(kind, text)
@@ -103,6 +108,7 @@ export function SettingsView(props: {
       organize: serverOrganize,
       discussion: serverDiscussion,
       worktree: serverWorktree.trim(),
+      autoOpen: serverAutoOpenSidebar,
     }
     setDraftRoot(serverRoot)
     setTemplate(serverTemplate)
@@ -111,6 +117,7 @@ export function SettingsView(props: {
     setOrganizeTemplate(serverOrganize)
     setDiscussionTemplate(serverDiscussion)
     setWorktreeRoot(serverWorktree)
+    setAutoOpenSidebar(serverAutoOpenSidebar)
     setError('')
   }
   function reviewTemplateProblem() {
@@ -168,6 +175,7 @@ export function SettingsView(props: {
       organizePromptTemplate: organizeTemplate,
       discussionPromptTemplate: discussionTemplate,
       worktreeRoot: worktreeValue,
+      autoOpenSidebar: autoOpenSidebar,
     }).then(function () {
       end()
       baselineRef.current = {
@@ -178,7 +186,9 @@ export function SettingsView(props: {
         organize: organizeTemplate,
         discussion: discussionTemplate,
         worktree: worktreeValue,
+        autoOpen: autoOpenSidebar,
       }
+      cacheAutoOpenSidebar(autoOpenSidebar)
       setError('')
       toast('info', t('settings.saved'))
       refreshAfterSuccess()
@@ -238,6 +248,7 @@ export function SettingsView(props: {
       organize: serverOrganize,
       discussion: serverDiscussion,
       worktree: serverWorktree.trim(),
+      autoOpen: serverAutoOpenSidebar,
     }
     setDraftRoot(serverRoot)
     setTemplate(serverTemplate)
@@ -246,7 +257,8 @@ export function SettingsView(props: {
     setOrganizeTemplate(serverOrganize)
     setDiscussionTemplate(serverDiscussion)
     setWorktreeRoot(serverWorktree)
-  }, [serverRoot, serverTemplate, serverReview, serverCommit, serverOrganize, serverDiscussion, serverWorktree])
+    setAutoOpenSidebar(serverAutoOpenSidebar)
+  }, [serverRoot, serverTemplate, serverReview, serverCommit, serverOrganize, serverDiscussion, serverWorktree, serverAutoOpenSidebar])
   useEffect(function () {
     if (dirty !== true) return undefined
     function guard() {
@@ -440,6 +452,20 @@ export function SettingsView(props: {
     h('div', { className: 'devbench-inline', style: { marginTop: '10px' } },
       h('button', { className: 'devbench-btn primary', disabled: busy, onClick: function () { saveDraft() } },
         busy ? t('settings.saving') : t('settings.save'))))
+  const interfaceSection = h('div', { className: 'devbench-section' },
+    h('div', { className: 'devbench-section-title' }, t('settings.interface')),
+    h('label', { className: 'devbench-check' },
+      h('input', {
+        type: 'checkbox',
+        checked: autoOpenSidebar,
+        disabled: busy,
+        onChange(event) { setAutoOpenSidebar(event.target.checked) },
+      }),
+      h('span', null, t('settings.autoOpenSidebar'))),
+    h('div', { className: 'devbench-hint' }, t('settings.autoOpenSidebar.hint')),
+    h('div', { className: 'devbench-inline', style: { marginTop: '10px' } },
+      h('button', { className: 'devbench-btn primary', disabled: busy, onClick: function () { saveDraft() } },
+        busy ? t('settings.saving') : t('settings.save'))))
   const templateSection = h('div', { className: 'devbench-section' },
     h('div', { className: 'devbench-section-title' }, t('settings.template')),
     h('textarea', {
@@ -538,6 +564,7 @@ export function SettingsView(props: {
       : null,
     error ? h(Banner, { kind: 'error' }, error) : null,
     rootSection,
+    interfaceSection,
     templateSection,
     reviewTemplateSection,
     commitTemplateSection,

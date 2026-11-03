@@ -14,6 +14,12 @@ import { DevbenchIcon } from '../../src/client/ui/icons.js'
 import { formatShortTime } from '../../src/client/ui/common.js'
 import { uiStore, resetUiStore, setSelection, setListState, resetListState } from '../../src/client/core/ui-store.js'
 import { setLeaveGuard, clearLeaveGuard, navigateView, hasLeaveGuard } from '../../src/client/core/navigation.js'
+import {
+  DevbenchSidebarView, DevbenchSidebarAction, DevbenchSidebarTitle,
+} from '../../src/client/views/project/sidebar-panel.js'
+import {
+  getAutoOpenSidebar, setAutoOpenSidebar, subscribePreferences,
+} from '../../src/client/core/preferences.js'
 
 const anyGlobal: any = globalThis
 
@@ -255,6 +261,147 @@ test('plugin keeps DSH inject and slot registration contract', function () {
   assert.equal(registered[1].component, DevbenchIcon)
   setRuntimeContext(null)
 })
+test('plugin registers the session right sidebar when the DSH seat is available', function () {
+  const registered = []
+  const definitions = []
+  const disposers = []
+  let disposeCount = 0
+  const sidebarRightTabs = {
+    register(definition) {
+      definitions.push(definition)
+      return function () { disposeCount += 1 }
+    },
+  }
+  const sidebarRight = {
+    openTab() {},
+    close() {},
+    isExpanded() { return true },
+    mounted: {
+      getSnapshot() { return 'session-1' },
+      subscribe() { return function () {} },
+    },
+  }
+  const ctx: ClientContext = {
+    effect(fn) {
+      const dispose = fn()
+      if (typeof dispose === 'function') disposers.push(dispose)
+    },
+    locale: {
+      register() { return function () {} },
+      bind() { return function (key) { return key } },
+    },
+    slots: {
+      inject(name, fn) { return fn() },
+      register(config, component) {
+        registered.push({ config: config, component: component })
+        return function () { disposeCount += 1 }
+      },
+    },
+    layout: { selectPanel() {} },
+    uiWorkspace: { async pickDirectory() { return null }, openSession() {} },
+    sessions: { async create() { return 'session-1' } },
+    remote: { session: {
+      async prompt() { return { ok: true, value: undefined } },
+      async rename() { return { ok: true, value: undefined } },
+    } },
+    inject(deps, callback) {
+      assert.deepEqual(deps, ['sidebarRight', 'sidebarRightTabs'])
+      return callback(Object.assign({}, ctx, {
+        sidebarRight: sidebarRight,
+        sidebarRightTabs: sidebarRightTabs,
+      }))
+    },
+    get(name) {
+      if (name === 'sidebarRight') return sidebarRight
+      if (name === 'sidebarRightTabs') return sidebarRightTabs
+      return null
+    },
+  }
+  setRuntimeContext(null)
+  const plugin = createPlugin()
+  plugin.apply(ctx)
+
+  assert.equal(definitions.length, 1)
+  const definition = definitions[0]
+  assert.equal(definition.id, 'dsh-devbench-plugin')
+  assert.equal(definition.kind, 'devbench-project')
+  assert.equal(typeof definition.title, 'function')
+  assert.equal(definition.title(), 'sidebar.tab.title')
+  assert.equal(definition.guide.length, 1)
+  assert.equal(definition.guide[0].id, 'project')
+  assert.equal(definition.guide[0].order, 40)
+  assert.equal(definition.guide[0].title(), 'sidebar.guide.title')
+  assert.equal(definition.guide[0].description(), 'sidebar.guide.description')
+  assert.equal(definition.guide[0].icon, DevbenchIcon)
+
+  // The three existing registrations plus the tab body, its title and the header action.
+  assert.equal(registered.length, 6)
+  const body = registered.find(function (item) { return item.config.name === 'sidebar.right.pane.tab' })
+  assert.equal(body.config.key, 'dsh-devbench-plugin')
+  assert.equal(body.config.locale, 'devbench')
+  assert.equal(body.component, DevbenchSidebarView)
+  assert.equal(typeof body.config.inject, 'function')
+  assert.deepEqual(body.config.inject('session-1'), { sessionId: 'session-1' })
+  const title = registered.find(function (item) { return item.config.name === 'sidebar.right.pane.tab.title' })
+  assert.equal(title.config.key, 'dsh-devbench-plugin')
+  assert.equal(title.component, DevbenchSidebarTitle)
+  const header = registered.find(function (item) { return item.config.id === 'devbench-sidebar' })
+  assert.equal(header.config.order, 30)
+  assert.equal(header.component, DevbenchSidebarAction)
+
+  disposers.forEach(function (dispose) { dispose() })
+  assert.equal(disposeCount, 4)
+  setRuntimeContext(null)
+})
+
+test('plugin keeps working when the right sidebar services are missing', function () {
+  const registered = []
+  const ctx: ClientContext = {
+    effect(fn) { fn() },
+    locale: {
+      register() { return function () {} },
+      bind() { return function (key) { return key } },
+    },
+    slots: {
+      inject(name, fn) { fn() },
+      register(config, component) { registered.push({ config: config, component: component }); return function () {} },
+    },
+    layout: { selectPanel() {} },
+    uiWorkspace: { async pickDirectory() { return null }, openSession() {} },
+    sessions: { async create() { return 'session-1' } },
+    remote: { session: {
+      async prompt() { return { ok: true, value: undefined } },
+      async rename() { return { ok: true, value: undefined } },
+    } },
+    // Older DSH: the optional injection callback never runs and there is no service accessor.
+    inject() { return undefined },
+  }
+  setRuntimeContext(null)
+  const plugin = createPlugin()
+  assert.doesNotThrow(function () { plugin.apply(ctx) })
+  assert.equal(registered.length, 3)
+  assert.equal(registered[0].config.key, 'devbench')
+  assert.equal(registered[1].config.id, 'devbench')
+  assert.equal(registered[2].config.id, 'devbench-link')
+  setRuntimeContext(null)
+})
+
+test('auto-open sidebar preference notifies cached subscribers only on change', function () {
+  const seen = []
+  const unsubscribe = subscribePreferences(function () { seen.push(getAutoOpenSidebar()) })
+  try {
+    setAutoOpenSidebar(true)
+    setAutoOpenSidebar(true)
+    setAutoOpenSidebar(false)
+    unsubscribe()
+    setAutoOpenSidebar(true)
+    assert.deepEqual(seen, [true, false])
+  } finally {
+    unsubscribe()
+    setAutoOpenSidebar(false)
+  }
+})
+
 test('built client preserves module loader id and externalizes react', function () {
   const code = fs.readFileSync('dist/client.js', 'utf8')
   let definition = null
@@ -268,6 +415,8 @@ test('built client preserves module loader id and externalizes react', function 
   assert.equal(registrations, 1)
   assert.equal(definition.id, pkg.name)
   assert.equal(typeof definition.factory, 'function')
+  assert.equal(Array.isArray(pkg.dsh.client.inject), true)
+  assert.equal(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-sidebar-right'), true)
   const requiredModules = []
   const plugin = definition.factory(function (name) {
     requiredModules.push(name)

@@ -78,6 +78,8 @@ function qs(values: Record<string, string | number | boolean>): string {
   }).join('&')
 }
 export function getState(opts?: RequestOptions): Promise<Api.StateDto> { return request('/state', undefined, opts) }
+/** Lightweight config read for session auto-expand decisions (no workspace scan). */
+export function getConfig(opts?: RequestOptions): Promise<Api.ConfigDto> { return request('/config', undefined, opts) }
 export function getRequirement(sel: Api.RequirementSelection, opts?: RequestOptions): Promise<Api.RequirementDetail> {
   return request('/requirement/get', sel, opts)
 }

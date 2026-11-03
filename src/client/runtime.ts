@@ -3,7 +3,108 @@ import type * as React from 'react'
 
 export type Translate = (key: string, params?: Record<string, string | number>) => string
 type RemoteResult<T> = { ok: true; value: T } | { ok: false; error: { code: string; message: string } }
-type Dispose = () => void
+export type Dispose = () => void
+
+/** Host observable exposed to client plugins (`subscribe` + `getSnapshot`). */
+export interface SnapshotStore<T> {
+  getSnapshot(): T
+  subscribe(listener: () => void): () => void
+}
+
+/** DSH workspace registry projection (`ctx.workspaces.list`, see dsh-api-workspace-controller). */
+export interface WorkspaceRef {
+  workspaceId: string
+  path: string
+  title: string
+  sessionIds: string[]
+}
+export interface WorkspacesSnapshot {
+  items: WorkspaceRef[]
+  phase?: string
+}
+/** DSH session catalog row; subagent rows carry `parentId`/`origin`. */
+export interface SessionRow {
+  id: string
+  displayTitle?: string
+  title?: string
+  cwd?: string
+  parentId?: string
+  origin?: string
+}
+export interface SessionsSnapshot {
+  ids: string[]
+  byId: Record<string, SessionRow>
+  phase?: string
+}
+
+/** Values the right-sidebar tab body reads through the seat-injected `useTabInfo()` hook. */
+export interface SidebarTabInfo {
+  sidebar: { expanded: boolean; fullscreen: boolean }
+  panel: { id: string }
+  tab: {
+    id: string
+    kind: string
+    contentId?: string
+    title: string
+    visible?: boolean
+    navigation?: { address?: string; params?: unknown; revision?: number }
+    signal?: AbortSignal
+  }
+}
+export type UseTabInfo = () => SidebarTabInfo
+
+export interface SidebarGuideEntry {
+  id: string
+  order?: number
+  title: () => string
+  description?: () => string
+  icon?: React.ComponentType<{ size?: number; className?: string }>
+  commandId?: string
+}
+/** `ctx.sidebarRightTabs.register` argument (page type: no `patterns`). */
+export interface SidebarTabDefinition {
+  id: string
+  kind: string
+  priority?: 'extension' | 'builtin' | 'fallback'
+  patterns?: string[]
+  canOpen?: (address: string) => boolean
+  title: (address?: string) => string
+  guide?: SidebarGuideEntry[]
+  keepMounted?: boolean
+  multiple?: boolean
+}
+export interface SidebarRightTabsService {
+  register(definition: SidebarTabDefinition): Dispose
+}
+export interface SidebarRightOpenOptions {
+  paneId?: string
+  preferNewPane?: boolean
+  replaceTab?: string
+  revealIfOpened?: boolean
+  params?: unknown
+}
+export interface SidebarRightService {
+  openTab(kind: string, options?: SidebarRightOpenOptions): void
+  close(tabId: string): void
+  isExpanded(): boolean
+  mounted: SnapshotStore<string | undefined>
+}
+/** Cordis `ctx.inject(deps, callback)` return value. */
+export type InjectFiber = { dispose?: Dispose } | Dispose | void
+
+/**
+ * Standard props a session-scoped slot entry receives (only the ones DevBench uses;
+ * see @deepseek-ai/dsh-client-ui-renderer README for the full list).
+ */
+export interface SessionSlotProps {
+  sessionId?: string
+  t?: Translate
+  // DSH binds these as uSES selectors, so the selector argument is required.
+  useSessions?: <S>(selector: (state: SessionsSnapshot) => S) => S
+  useWorkspaces?: <S>(selector: (state: WorkspacesSnapshot) => S) => S
+  useTabInfo?: UseTabInfo
+}
+
 export interface ClientContext {
   effect(callback: () => Dispose, name: string): void
   locale: {
@@ -44,6 +145,12 @@ export interface ClientContext {
       rename(options: { sessionId: string; title: string }): Promise<RemoteResult<unknown>>
     }
   }
+  // Optional Cordis surface: present in DSH >= 0.2.1-rc.5. Plugins feature-detect
+  // with `ctx.get(name)` / `ctx.inject(deps, cb)` so older hosts keep loading.
+  get?(name: string): unknown
+  inject?(deps: string[], callback: (scope: ClientContext) => Dispose | void): InjectFiber
+  sidebarRight?: SidebarRightService
+  sidebarRightTabs?: SidebarRightTabsService
 }
 
 let ReactLib: typeof React | null = null
@@ -51,6 +158,10 @@ let runtimeCtx: ClientContext | null = null
 let boundT: Translate | null = null
 export const NS = 'devbench'
 export const PANEL_ID = 'devbench'
+/** Right-sidebar tab type identity: also the key its body/title register under. */
+export const SIDEBAR_TAB_ID = 'dsh-devbench-plugin'
+export const SIDEBAR_TAB_KIND = 'devbench-project'
+export const SIDEBAR_GUIDE_ENTRY_ID = 'project'
 function uninitialized(): never { throw new Error('runtime not initialized') }
 export let h: typeof React.createElement = uninitialized
 export let useState: typeof React.useState = uninitialized

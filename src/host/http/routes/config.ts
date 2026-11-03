@@ -36,6 +36,13 @@ export const configRoutes: any[] = [
     },
   },
   {
+    method: 'GET',
+    path: '/config',
+    async handle(context) {
+      return context.config
+    },
+  },
+  {
     method: 'POST',
     path: '/config',
     async handle(context) {
@@ -132,6 +139,12 @@ export const configRoutes: any[] = [
             }
             value.worktreeRoot = real
           }
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'autoOpenSidebar')) {
+          if (typeof body.autoOpenSidebar !== 'boolean') {
+            throw apiError(400, 'bad-auto-open-sidebar', messages.autoOpenSidebarInvalid)
+          }
+          value.autoOpenSidebar = body.autoOpenSidebar
         }
         return value
       })

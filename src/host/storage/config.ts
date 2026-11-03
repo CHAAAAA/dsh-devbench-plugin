@@ -86,6 +86,7 @@ export function defaultConfig(): ConfigDto {
     organizePromptTemplate: DEFAULT_ORGANIZE_PROMPT_TEMPLATE,
     discussionPromptTemplate: DEFAULT_DISCUSSION_PROMPT_TEMPLATE,
     worktreeRoot: '',
+    autoOpenSidebar: false,
   }
 }
 
@@ -133,6 +134,7 @@ export async function readConfig(): Promise<ConfigDto> {
   if (worktreeRoot.length > 0 && path.isAbsolute(worktreeRoot) === false) {
     throw apiError(500, 'config-corrupt', messages.configCorrupt)
   }
+  const autoOpenSidebar = data.autoOpenSidebar === true
   return {
     rootDir,
     promptTemplate: prompt,
@@ -141,6 +143,7 @@ export async function readConfig(): Promise<ConfigDto> {
     organizePromptTemplate: organizePrompt,
     discussionPromptTemplate: discussionPrompt,
     worktreeRoot,
+    autoOpenSidebar,
   }
 }
 
@@ -179,6 +182,7 @@ async function persistConfig(next: Partial<ConfigDto>): Promise<ConfigDto> {
   if (worktreeRoot.length > 0 && path.isAbsolute(worktreeRoot) === false) {
     throw apiError(400, 'bad-root', messages.badRoot)
   }
+  const autoOpenSidebar = next.autoOpenSidebar === true
   await fsp.mkdir(configDirectory(), { recursive: true })
   await atomicWriteJson(configFilePath(), {
     version: 1,
@@ -189,6 +193,7 @@ async function persistConfig(next: Partial<ConfigDto>): Promise<ConfigDto> {
     organizePromptTemplate: storedOrganizeTemplate,
     discussionPromptTemplate: storedDiscussionTemplate,
     worktreeRoot,
+    autoOpenSidebar,
   })
   return {
     rootDir,
@@ -198,6 +203,7 @@ async function persistConfig(next: Partial<ConfigDto>): Promise<ConfigDto> {
     organizePromptTemplate: storedOrganizeTemplate || DEFAULT_ORGANIZE_PROMPT_TEMPLATE,
     discussionPromptTemplate: storedDiscussionTemplate || DEFAULT_DISCUSSION_PROMPT_TEMPLATE,
     worktreeRoot,
+    autoOpenSidebar,
   }
 }
 

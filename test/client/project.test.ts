@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  getProjectOverview, addProject, initProjectGit, previewProjectCommit,
+  getConfig, getProjectOverview, addProject, initProjectGit, previewProjectCommit,
   confirmProjectCommit, startProjectReview, startUncommittedReview, getProjectTasks,
   cancelProjectTask, retryProjectTask, getReviewContent,
   getProjectWorktrees, getProjectWorktreeChanges, previewWorktreeCommit,
@@ -41,6 +41,14 @@ async function callWith(payload, fn) {
     anyGlobal.fetch = original
   }
 }
+test('config wrapper uses GET without a body', async function () {
+  const payload = { rootDir: '/tmp/root', autoOpenSidebar: true }
+  const out = await callWith(payload, function () { return getConfig() })
+  assert.equal(out.seen.method, 'GET')
+  assert.equal(out.seen.url.endsWith('/dsh-devbench/api/config'), true)
+  assert.equal(out.seen.body, null)
+  assert.deepEqual(out.value, payload)
+})
 test('project overview wrapper uses GET query', async function () {
   const out = await callWith({ project: {} }, function () { return getProjectOverview('w 1') })
   assert.equal(out.seen.method, 'GET')

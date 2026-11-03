@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import { DEFAULT_PROMPT_TEMPLATE } from '../../src/host/constants.js'
+import { messages } from '../../src/host/messages/index.js'
 import {
   createHarness,
   makeWorkspace,
@@ -178,6 +179,56 @@ test('running requirements cannot be deleted and stay in the list', async functi
     assert.equal(found.requirement.status, 'running')
     const state = expectOk(await harness.request('GET', '/state'))
     assert.equal(state.workspaces[0].requirements.length, 1)
+  } finally {
+    await harness.close()
+  }
+})
+
+test('autoOpenSidebar defaults to false and round-trips through config routes', async function () {
+  const harness = await createHarness([])
+  try {
+    const initialState = expectOk(await harness.request('GET', '/state'))
+    assert.equal(initialState.config.autoOpenSidebar, false)
+    const initialConfig = expectOk(await harness.request('GET', '/config'))
+    assert.equal(initialConfig.autoOpenSidebar, false)
+    assert.equal(initialConfig.rootDir, '')
+
+    const enabled = expectOk(await harness.request('POST', '/config', { autoOpenSidebar: true }))
+    assert.equal(enabled.config.autoOpenSidebar, true)
+    const enabledConfig = expectOk(await harness.request('GET', '/config'))
+    assert.equal(enabledConfig.autoOpenSidebar, true)
+    const enabledState = expectOk(await harness.request('GET', '/state'))
+    assert.equal(enabledState.config.autoOpenSidebar, true)
+    const rawEnabled = JSON.parse(await fsp.readFile(
+      path.join(harness.configDir, 'config.json'), 'utf8'))
+    assert.equal(rawEnabled.autoOpenSidebar, true)
+
+    // Unrelated config updates keep the stored flag.
+    expectOk(await harness.request('POST', '/config', { promptTemplate: 'custom {id}' }))
+    assert.equal(expectOk(await harness.request('GET', '/config')).autoOpenSidebar, true)
+
+    expectOk(await harness.request('POST', '/config', { autoOpenSidebar: false }))
+    assert.equal(expectOk(await harness.request('GET', '/config')).autoOpenSidebar, false)
+
+    const invalid = await harness.request('POST', '/config', { autoOpenSidebar: 'true' })
+    assert.equal(invalid.status, 400)
+    assert.equal(invalid.data.error.code, 'bad-auto-open-sidebar')
+    assert.equal(invalid.data.error.message, messages.autoOpenSidebarInvalid)
+  } finally {
+    await harness.close()
+  }
+})
+
+test('legacy config without autoOpenSidebar reads as false', async function () {
+  const harness = await createHarness([])
+  try {
+    await fsp.mkdir(harness.configDir, { recursive: true })
+    await fsp.writeFile(path.join(harness.configDir, 'config.json'),
+      JSON.stringify({ version: 1, rootDir: '', promptTemplate: '', reviewPromptTemplate: '' }))
+    const config = expectOk(await harness.request('GET', '/config'))
+    assert.equal(config.autoOpenSidebar, false)
+    const state = expectOk(await harness.request('GET', '/state'))
+    assert.equal(state.config.autoOpenSidebar, false)
   } finally {
     await harness.close()
   }
