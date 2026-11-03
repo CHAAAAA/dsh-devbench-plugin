@@ -124,6 +124,8 @@ export const zh = {
       'session.action.open': '打开需求',
       'session.action.link': '关联需求',
       'session.action.label': '需求',
+      'session.action.more': '更多操作',
+      'session.action.devbench': '打开 DevBench',
       'session.organize': '整理为需求',
       'session.organize.title': '整理为需求',
       'session.organize.body': '把当前会话的内容整理为一个需求，写入所选项目的需求目录。Agent 会总结会话（包括讨论出的实现方案）并创建需求文档。',
@@ -262,6 +264,8 @@ export const en = {
       'session.action.open': 'Open requirement',
       'session.action.link': 'Link requirement',
       'session.action.label': 'Requirement',
+      'session.action.more': 'More actions',
+      'session.action.devbench': 'Open DevBench',
       'session.organize': 'Organize as requirement',
       'session.organize.title': 'Organize as requirement',
       'session.organize.body': 'Turn the current session into a requirement and write it into the selected project\'s requirement folder. The Agent summarizes the session (including any implementation plan) and creates the requirement document.',
@@ -1456,10 +1460,6 @@ en['update.blocked.unavailable'] = 'Upgrade is unavailable; check the install ty
 // REQ-20261103-001: session right sidebar + project workbench.
 zh['sidebar.tab.title'] = 'DevBench'
 en['sidebar.tab.title'] = 'DevBench'
-zh['sidebar.open'] = '在右侧边栏打开 DevBench 项目'
-en['sidebar.open'] = 'Open the DevBench project in the right sidebar'
-zh['sidebar.open.short'] = 'DevBench'
-en['sidebar.open.short'] = 'DevBench'
 zh['sidebar.openFull'] = '在完整 DevBench 工作台中打开'
 en['sidebar.openFull'] = 'Open in the full DevBench workbench'
 zh['sidebar.loading'] = '正在定位当前会话的项目…'

@@ -10,13 +10,14 @@ import { sanitizeHref, renderMarkdown } from '../../src/client/ui/markdown.js'
 import { zh, en } from '../../src/client/i18n/index.js'
 import { request } from '../../src/client/core/api.js'
 import { createPlugin } from '../../src/client/plugin.js'
-import { DevbenchIcon } from '../../src/client/ui/icons.js'
+import { DevbenchIcon, IconCaret } from '../../src/client/ui/icons.js'
 import { formatShortTime } from '../../src/client/ui/common.js'
 import { uiStore, resetUiStore, setSelection, setListState, resetListState } from '../../src/client/core/ui-store.js'
 import { setLeaveGuard, clearLeaveGuard, navigateView, hasLeaveGuard } from '../../src/client/core/navigation.js'
 import {
-  DevbenchSidebarView, DevbenchSidebarAction, DevbenchSidebarTitle,
+  DevbenchSidebarView, DevbenchSidebarTitle,
 } from '../../src/client/views/project/sidebar-panel.js'
+import { SessionRequirementAction } from '../../src/client/views/project/session-action.js'
 import {
   getAutoOpenSidebar, setAutoOpenSidebar, subscribePreferences,
 } from '../../src/client/core/preferences.js'
@@ -43,6 +44,15 @@ function flatten(nodes, out?) {
   }
   return list
 }
+test('session header dropdown caret flips direction with the menu state', function () {
+  function caretPath(props) {
+    const path = flatten([IconCaret(props)]).find(function (node) { return node && node.type === 'path' })
+    return path ? path.props.d : ''
+  }
+  // A degenerate path (returning to the start point) would render nothing in the collapsed state.
+  assert.equal(caretPath({}), 'M6 9l6 6 6-6')
+  assert.equal(caretPath({ open: true }), 'M6 15l6-6 6 6')
+})
 test('i18n keys stay aligned', function () {
   assert.deepEqual(Object.keys(zh).sort(), Object.keys(en).sort())
   assert.equal(zh['detail.serverChanged'].length > 0, true)
@@ -67,6 +77,13 @@ test('i18n keys stay aligned', function () {
   assert.equal(en['list.loadMore'].indexOf('{count}') >= 0, true)
   assert.equal(zh['list.shownAll'].indexOf('{total}') >= 0, true)
   assert.equal(en['list.shownAll'].indexOf('{total}') >= 0, true)
+  // REQ-20261103-002: merged session header split button.
+  assert.equal(zh['session.action.more'], '更多操作')
+  assert.equal(en['session.action.more'], 'More actions')
+  assert.equal(zh['session.action.devbench'], '打开 DevBench')
+  assert.equal(en['session.action.devbench'], 'Open DevBench')
+  assert.equal('sidebar.open' in zh, false, 'the removed header-button tooltip key is gone')
+  assert.equal('sidebar.open' in en, false, 'the removed header-button tooltip key is gone')
   // REQ-20261027-003: uncommitted working-tree review copy.
   assert.equal(zh['project.ai.reviewUncommitted'], '评审未提交')
   assert.equal(en['project.ai.reviewUncommitted'], 'Review uncommitted')
@@ -334,8 +351,9 @@ test('plugin registers the session right sidebar when the DSH seat is available'
   assert.equal(definition.guide[0].description(), 'sidebar.guide.description')
   assert.equal(definition.guide[0].icon, DevbenchIcon)
 
-  // The three existing registrations plus the tab body, its title and the header action.
-  assert.equal(registered.length, 6)
+  // The three existing registrations plus the tab body and its title. The conversation
+  // header entry is the merged dropdown registered once by plugin.ts (REQ-20261103-002).
+  assert.equal(registered.length, 5)
   const body = registered.find(function (item) { return item.config.name === 'sidebar.right.pane.tab' })
   assert.equal(body.config.key, 'dsh-devbench-plugin')
   assert.equal(body.config.locale, 'devbench')
@@ -345,12 +363,14 @@ test('plugin registers the session right sidebar when the DSH seat is available'
   const title = registered.find(function (item) { return item.config.name === 'sidebar.right.pane.tab.title' })
   assert.equal(title.config.key, 'dsh-devbench-plugin')
   assert.equal(title.component, DevbenchSidebarTitle)
-  const header = registered.find(function (item) { return item.config.id === 'devbench-sidebar' })
-  assert.equal(header.config.order, 30)
-  assert.equal(header.component, DevbenchSidebarAction)
+  const header = registered.find(function (item) { return item.config.name === 'conversation.session.header.actions' })
+  assert.equal(header.config.id, 'devbench-link')
+  assert.equal(header.config.order, 20)
+  assert.equal(header.component, SessionRequirementAction)
+  assert.deepEqual(header.config.inject('session-1'), { linkedSessionId: 'session-1' })
 
   disposers.forEach(function (dispose) { dispose() })
-  assert.equal(disposeCount, 4)
+  assert.equal(disposeCount, 3)
   setRuntimeContext(null)
 })
 

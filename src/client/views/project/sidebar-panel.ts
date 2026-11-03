@@ -1,14 +1,15 @@
 /**
  * Session right-sidebar integration: the tab body that renders the current session's project
- * workbench, the conversation-header button that opens it, and the registration glue.
+ * workbench and the registration glue. The conversation-header entry lives in
+ * `session-action.ts`, which opens this tab from its dropdown menu.
  *
  * Every DSH right-sidebar call sits behind the optional `ctx.inject(['sidebarRight',
  * 'sidebarRightTabs'], ...)` scope, so a host without the 0.2.1-rc.5 seat keeps the global
  * panel untouched (engines lower bound stays 0.2.1-rc.3).
  */
 import {
-  h, getFragment, getReact, useState, useEffect, useRef, useSyncExternalStore,
-  t as translate, NS, SIDEBAR_TAB_ID, SIDEBAR_TAB_KIND, SIDEBAR_GUIDE_ENTRY_ID,
+  h, getReact, useState, useEffect, t as translate,
+  NS, SIDEBAR_TAB_ID, SIDEBAR_TAB_KIND, SIDEBAR_GUIDE_ENTRY_ID,
 } from '../../runtime.js'
 import type { ReactElement } from 'react'
 import type {
@@ -20,10 +21,10 @@ import {
   findSessionRow, findSessionWorkspace, findWorkspaceById, findWorkspaceByPath, isSubagentSession,
 } from '../../core/session-project.js'
 import {
-  getAutoOpenSidebar, refreshPreferences, subscribePreferences,
+  refreshPreferences,
 } from '../../core/preferences.js'
 import {
-  openDevbenchSidebar, openFullWorkbench, useSessionsState, useWorkspacesState,
+  openFullWorkbench, useSessionsState, useWorkspacesState,
 } from '../../core/sidebar.js'
 import { Styles } from '../../ui/common.js'
 import { DevbenchIcon, IconExternal, IconRefresh } from '../../ui/icons.js'
@@ -37,9 +38,6 @@ interface Mapping {
 }
 
 const RESOLVING: Mapping = { status: 'resolving', projectId: '', title: '', path: '' }
-// Auto-open at most once per session per page load: remounting the header action after a
-// session switch must not re-open a sidebar the user closed.
-const autoOpenedSessions = new Set<string>()
 
 function workspacesPending(snapshot: unknown): boolean {
   if (snapshot === null || snapshot === undefined) return true
@@ -236,56 +234,6 @@ export function DevbenchSidebarTitle(props: { t?: Translate }): ReactElement {
   return h('span', null, t('sidebar.tab.title'))
 }
 
-/**
- * Conversation-header button. It also drives the optional auto-open preference: once the
- * session's project is known and the preference is on, it opens the tab for this session
- * exactly once (retrying briefly while DSH mints the session surface).
- */
-export function DevbenchSidebarAction(props: SessionSlotProps): ReactElement {
-  const t = props.t || translate
-  const sessionId = typeof props.sessionId === 'string' ? props.sessionId : ''
-  const workspaces = useWorkspacesState(props.useWorkspaces)
-  const autoOpen = useSyncExternalStore(subscribePreferences, getAutoOpenSidebar, getAutoOpenSidebar)
-  const membership = findSessionWorkspace(workspaces, sessionId)
-  const projectId = membership !== null ? membership.workspaceId : ''
-  const autoAttemptRef = useRef('')
-  useEffect(function () {
-    if (autoOpen !== true || sessionId === '' || projectId === '') return function () {}
-    if (autoAttemptRef.current === sessionId || autoOpenedSessions.has(sessionId)) return function () {}
-    autoAttemptRef.current = sessionId
-    let cancelled = false
-    let attempts = 0
-    let timer: ReturnType<typeof setTimeout> | null = null
-    function attempt(): void {
-      if (cancelled) return
-      if (openDevbenchSidebar(sessionId)) {
-        autoOpenedSessions.add(sessionId)
-        return
-      }
-      attempts += 1
-      if (attempts > 6) return
-      timer = setTimeout(attempt, 150)
-    }
-    attempt()
-    return function () {
-      cancelled = true
-      if (timer !== null) clearTimeout(timer)
-    }
-  }, [autoOpen, sessionId, projectId])
-  const label = t('sidebar.open')
-  return h(getFragment(), null,
-    h(Styles, null),
-    h('button', {
-      className: 'devbench-btn devbench-sidebar-trigger',
-      title: label,
-      'aria-label': label,
-      disabled: sessionId === '',
-      onClick: function () { openDevbenchSidebar(sessionId) },
-    },
-    h(DevbenchIcon, { size: 14 }),
-    h('span', { className: 'devbench-sidebar-trigger-label' }, t('sidebar.open.short'))))
-}
-
 function disposeFiber(fiber: unknown): void {
   try {
     if (typeof fiber === 'function') (fiber as Dispose)()
@@ -343,15 +291,6 @@ function registerInScope(scope: ClientContext): Dispose {
         key: SIDEBAR_TAB_ID,
         locale: NS,
       }, DevbenchSidebarTitle)
-    })
-    trackInject('conversation.session.header.actions', function () {
-      return scope.slots.register({
-        name: 'conversation.session.header.actions',
-        id: 'devbench-sidebar',
-        order: 30,
-        locale: NS,
-        inject: function (sessionId: string) { return { sessionId: sessionId } },
-      }, DevbenchSidebarAction)
     })
   } catch (err) {
     console.error('devbench: right sidebar registration failed', err)

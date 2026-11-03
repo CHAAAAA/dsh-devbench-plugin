@@ -44,6 +44,8 @@ export function createPlugin(): { inject: string[]; apply(ctx: ClientContext): v
           label() { return t('panel.title') },
         }, DevbenchIcon)
       })
+      // One merged session header entry (REQ-20261103-002): the main button opens the
+      // session's requirement, the caret menu organizes it or opens the DevBench sidebar.
       ctx.slots.inject('conversation.session.header.actions', function () {
         return ctx.slots.register({
           name: 'conversation.session.header.actions',
@@ -53,8 +55,8 @@ export function createPlugin(): { inject: string[]; apply(ctx: ClientContext): v
           inject(sessionId) { return { linkedSessionId: sessionId } },
         }, SessionRequirementAction)
       })
-      // Session right sidebar (DSH >= 0.2.1-rc.5): tab type, body and header button.
-      // Older hosts never provide these services and keep the global panel entry above.
+      // Session right sidebar (DSH >= 0.2.1-rc.5): tab type and body. Older hosts never
+      // provide these services and keep the global panel entry above.
       ctx.effect(function () {
         return registerSidebarRight(ctx)
       }, 'devbench: sidebar right')

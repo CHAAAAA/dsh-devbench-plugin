@@ -31,7 +31,7 @@ import { CommitDiffBrowser, buildCommitFileTree } from '../../src/client/ui/comm
 import { HomeView, HomeTaskRow, HomeRunningRow } from '../../src/client/views/home.js'
 import { closeDialog } from '../../src/client/ui/dialogs.js'
 import { DevbenchIcon, IconReq } from '../../src/client/ui/icons.js'
-import { DevbenchSidebarView, DevbenchSidebarAction } from '../../src/client/views/project/sidebar-panel.js'
+import { DevbenchSidebarView } from '../../src/client/views/project/sidebar-panel.js'
 import { setAutoOpenSidebar } from '../../src/client/core/preferences.js'
 import { CSS } from '../../src/client/ui/styles.js'
 
@@ -255,7 +255,6 @@ test('all client views render once without undefined references', async function
     CommitConfirmModal,
     HomeView,
     DevbenchSidebarView,
-    DevbenchSidebarAction,
   ]
   for (const View of views) {
     const props = {
@@ -3570,7 +3569,23 @@ test('session right sidebar shows explicit empty states for unmapped and subagen
   await waitFor(() => textOf(currentNodes()).join(' ').includes('sidebar.empty.subagent.title'), 'subagent empty state')
 })
 
-test('session header action opens the right sidebar tab for the mounted session', async function () {
+/** The merged session header action talks to the plugin HTTP API on mount. */
+function mockSessionLink(link) {
+  mockApi(function (url) {
+    if (url.pathname.endsWith('/session-link')) return { link: link }
+    if (url.pathname.endsWith('/state')) return stateData
+    return {}
+  })
+}
+function headerActionNodes(className) {
+  return currentNodes().filter(node => node.type === 'button' &&
+    String(node.props.className || '').indexOf(className) >= 0)
+}
+function menuOpen() {
+  return currentNodes().some(node => String(node.props.className || '') === 'devbench-actions-menu')
+}
+
+test('merged session header dropdown opens the right sidebar from its DevBench item', async function () {
   setAutoOpenSidebar(false)
   const opened = []
   setRuntimeContext(sidebarHost({
@@ -3578,19 +3593,170 @@ test('session header action opens the right sidebar tab for the mounted session'
     close: noop, isExpanded: () => false,
     mounted: { getSnapshot: () => 's-open', subscribe: () => noop },
   }) as any)
+  mockSessionLink(null)
   const workspaces = {
     phase: 'ready',
     items: [{ workspaceId: 'w1', path: '/tmp/w1', title: 'Workspace', sessionIds: ['s-open'] }],
   }
   cleanup()
-  await render({ type: DevbenchSidebarAction, props: {
-    t: t, sessionId: 's-open', useWorkspaces: dshSelectorHook(workspaces),
+  await render({ type: SessionRequirementAction, props: {
+    t: t, linkedSessionId: 's-open', useWorkspaces: dshSelectorHook(workspaces),
   } })
-  const trigger = currentNodes().find(node => node.type === 'button' &&
-    String(node.props.className || '').indexOf('devbench-sidebar-trigger') >= 0)
-  assert.ok(trigger, 'header trigger renders')
-  await trigger.props.onClick()
+  const toggle = headerActionNodes('devbench-actions-toggle')[0]
+  assert.ok(toggle, 'dropdown toggle renders')
+  assert.equal(toggle.props['aria-expanded'], 'false')
+  assert.equal(menuOpen(), false)
+  await toggle.props.onClick()
+  assert.equal(headerActionNodes('devbench-actions-toggle')[0].props['aria-expanded'], 'true')
+  const items = headerActionNodes('devbench-actions-item')
+  assert.equal(items.length, 2)
+  assert.ok(textOf(items[0]).join(' ').includes('session.organize'), 'organize item renders first')
+  const devbenchItem = items.find(node => textOf(node).join(' ').includes('session.action.devbench'))
+  assert.ok(devbenchItem, 'DevBench menu item renders')
+  await devbenchItem.props.onClick()
   assert.deepEqual(opened, ['devbench-project'])
+  assert.equal(menuOpen(), false, 'menu closes after choosing an item')
+})
+
+test('DevBench menu item falls back to the full workbench without the right sidebar seat', async function () {
+  setAutoOpenSidebar(false)
+  const panels = []
+  // Older DSH: no sidebarRight service, so the entry must fall back to the full panel.
+  setRuntimeContext({ layout: { selectPanel(id) { panels.push(id) } } } as any)
+  mockSessionLink(null)
+  const workspaces = {
+    phase: 'ready',
+    items: [{ workspaceId: 'w1', path: '/tmp/w1', title: 'Workspace', sessionIds: ['s-fallback'] }],
+  }
+  try {
+    resetUiStore()
+    cleanup()
+    await render({ type: SessionRequirementAction, props: {
+      t: t, linkedSessionId: 's-fallback', useWorkspaces: dshSelectorHook(workspaces),
+    } })
+    const toggle = headerActionNodes('devbench-actions-toggle')[0]
+    await toggle.props.onClick()
+    const item = headerActionNodes('devbench-actions-item')
+      .find(node => textOf(node).join(' ').includes('session.action.devbench'))
+    assert.ok(item, 'DevBench menu item renders without the seat')
+    await item.props.onClick()
+    assert.deepEqual(panels, ['devbench'])
+    assert.equal(uiStore.state.view, 'project')
+    assert.equal(uiStore.state.selectedProjectId, 'w1')
+  } finally {
+    resetUiStore()
+  }
+})
+
+test('merged session header shows the fixed open-requirement button and its organize entry', async function () {
+  setAutoOpenSidebar(false)
+  setRuntimeContext(null)
+  mockSessionLink(null)
+  cleanup()
+  await render({ type: SessionRequirementAction, props: { t: t, linkedSessionId: 's-menu' } })
+  await flushAsyncWork()
+  const main = headerActionNodes('devbench-actions-main')[0]
+  assert.ok(main, 'main button renders')
+  assert.ok(textOf(main).join(' ').includes('session.action.open'), 'main label is the fixed open-requirement text')
+  assert.equal(main.props['aria-label'], 'session.action.open', 'accessible name matches the visible label')
+  assert.equal(menuOpen(), false)
+  // Outside click closes the menu.
+  await headerActionNodes('devbench-actions-toggle')[0].props.onClick()
+  assert.equal(menuOpen(), true)
+  await act(async () => {
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+  })
+  assert.equal(menuOpen(), false, 'outside click closes the menu')
+  // Escape closes the menu and returns focus to the control that opened it.
+  const toggle = headerActionNodes('devbench-actions-toggle')[0]
+  await toggle.props.onClick()
+  assert.equal(menuOpen(), true)
+  await act(async () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  })
+  assert.equal(menuOpen(), false, 'Escape closes the menu')
+  assert.equal(document.activeElement, toggle.element, 'Escape returns focus to the toggle')
+  // Switching sessions reuses the component; the menu must not stay open over the new session.
+  await headerActionNodes('devbench-actions-toggle')[0].props.onClick()
+  assert.equal(menuOpen(), true)
+  await render({ type: SessionRequirementAction, props: { t: t, linkedSessionId: 's-menu-2' } })
+  assert.equal(menuOpen(), false, 'switching sessions closes the menu')
+  // The organize entry opens the existing dialog.
+  await headerActionNodes('devbench-actions-toggle')[0].props.onClick()
+  const organizeItem = headerActionNodes('devbench-actions-item')
+    .find(node => textOf(node).join(' ').includes('session.organize'))
+  assert.ok(organizeItem, 'organize menu item renders')
+  await organizeItem.props.onClick()
+  await waitFor(() => textOf(currentNodes()).join(' ').includes('session.organize.title'), 'organize dialog opens')
+  assert.equal(menuOpen(), false, 'menu closes before the dialog opens')
+})
+
+test('session header main button is disabled while loading and retries after a read error', async function () {
+  setAutoOpenSidebar(false)
+  setRuntimeContext(null)
+  const requested = []
+  let failFirstLink = noop
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async function (input) {
+    const url = new URL(String(input), 'http://127.0.0.1')
+    requested.push(url)
+    if (!url.pathname.endsWith('/session-link')) return reply({})
+    const linkCalls = requested.filter(item => item.pathname.endsWith('/session-link'))
+    if (linkCalls.length === 1) {
+      return new Promise<Response>(function (resolve, reject) {
+        failFirstLink = function () { reject(new Error('boom')) }
+      })
+    }
+    return reply({ link: null })
+  }
+  try {
+    cleanup()
+    await render({ type: SessionRequirementAction, props: { t: t, linkedSessionId: 's-retry' } })
+    const loading = headerActionNodes('devbench-actions-main')[0]
+    assert.equal(loading.props.disabled, true, 'main button is disabled while the link loads')
+    assert.equal(loading.props['aria-busy'], 'true')
+    await act(async () => { failFirstLink() })
+    await flushAsyncWork()
+    const failed = headerActionNodes('devbench-actions-main')[0]
+    assert.equal(failed.props.title, 'session.action.error', 'the error tooltip explains the retry')
+    await failed.props.onClick()
+    await waitFor(() => headerActionNodes('devbench-actions-main')[0].props.title === 'session.action.link', 'a click retries the failed read')
+    const linkCalls = requested.filter(item => item.pathname.endsWith('/session-link'))
+    assert.equal(linkCalls.length, 2, 'the retry issues exactly one more read')
+    assert.equal(linkCalls[0].searchParams.get('sessionId'), 's-retry', 'the link read carries the session id')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('session header main button opens the linked requirement or the link picker', async function () {
+  setAutoOpenSidebar(false)
+  const panels = []
+  setRuntimeContext({ layout: { selectPanel(id) { panels.push(id) } } } as any)
+  const link = { workspaceId: 'w1', id: 'REQ-1', title: 'Sample', status: 'new' }
+  mockSessionLink(link)
+  try {
+    resetUiStore()
+    cleanup()
+    await render({ type: SessionRequirementAction, props: { t: t, linkedSessionId: 's-linked' } })
+    await waitFor(() => currentNodes().some(node => node.props.title === 'session.action.open: Sample'), 'session link loads')
+    await headerActionNodes('devbench-actions-main')[0].props.onClick()
+    assert.equal(uiStore.state.view, 'project')
+    assert.deepEqual(uiStore.state.selectedRequirement, { workspaceId: 'w1', id: 'REQ-1' })
+    assert.deepEqual(panels, ['devbench'])
+
+    // Without a link the same button opens the requirement picker instead.
+    resetUiStore()
+    mockSessionLink(null)
+    cleanup()
+    await render({ type: SessionRequirementAction, props: { t: t, linkedSessionId: 's-unlinked' } })
+    await waitFor(() => currentNodes().some(node => node.props.title === 'session.action.link'), 'unlinked state loads')
+    await headerActionNodes('devbench-actions-main')[0].props.onClick()
+    assert.equal(uiStore.state.view, 'link')
+    assert.equal(uiStore.state.linkSessionId, 's-unlinked')
+  } finally {
+    resetUiStore()
+  }
 })
 
 test('auto-open preference opens the sidebar once per session', async function () {
@@ -3600,6 +3766,7 @@ test('auto-open preference opens the sidebar once per session', async function (
     close: noop, isExpanded: () => false,
     mounted: { getSnapshot: () => 's-auto', subscribe: () => noop },
   }) as any)
+  mockSessionLink(null)
   const workspaces = {
     phase: 'ready',
     items: [{ workspaceId: 'w1', path: '/tmp/w1', title: 'Workspace', sessionIds: ['s-auto'] }],
@@ -3607,14 +3774,14 @@ test('auto-open preference opens the sidebar once per session', async function (
   setAutoOpenSidebar(true)
   try {
     cleanup()
-    await render({ type: DevbenchSidebarAction, props: {
-      t: t, sessionId: 's-auto', useWorkspaces: dshSelectorHook(workspaces),
+    await render({ type: SessionRequirementAction, props: {
+      t: t, linkedSessionId: 's-auto', useWorkspaces: dshSelectorHook(workspaces),
     } })
     await waitFor(() => opened.length === 1, 'auto-open runs once')
     // A remount (session switch) must not re-open a sidebar the user may have closed.
     cleanup()
-    await render({ type: DevbenchSidebarAction, props: {
-      t: t, sessionId: 's-auto', useWorkspaces: dshSelectorHook(workspaces),
+    await render({ type: SessionRequirementAction, props: {
+      t: t, linkedSessionId: 's-auto', useWorkspaces: dshSelectorHook(workspaces),
     } })
     await flushAsyncWork()
     assert.deepEqual(opened, ['devbench-project'])

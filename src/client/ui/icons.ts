@@ -129,6 +129,11 @@ export function IconChevron(props) {
   const path = props.open ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6'
   return h(Svg, { size: props.size || 12 }, h('path', { d: path }))
 }
+/** Dropdown caret: points down while collapsed, up while expanded. */
+export function IconCaret(props) {
+  const path = props && props.open ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'
+  return h(Svg, { size: (props && props.size) || 12 }, h('path', { d: path }))
+}
 export function IconCollapseAll() {
   return h(Svg, null, h('path', { d: 'M6 14l6-5 6 5M6 19l6-5 6 5' }))
 }
