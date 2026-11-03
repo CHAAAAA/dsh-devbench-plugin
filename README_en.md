@@ -7,7 +7,7 @@
 | Item | Value |
 | --- | --- |
 | Package | `dsh-devbench-plugin` |
-| Version | **1.0.7** |
+| Version | **1.0.8** |
 | DSH compatibility | `>=0.2.1-rc.3 <0.3.0-0` |
 | Node.js | >= 24.9.0 |
 | License | MIT |
@@ -38,14 +38,14 @@
 
 1. Open the DSH **Plugins** page (in some versions it is under **Settings → Plugins**).
 2. Click **Add plugin**.
-3. Enter the package name and exact version: `dsh-devbench-plugin@1.0.7`.
+3. Enter the package name and exact version: `dsh-devbench-plugin@1.0.8`.
 4. Wait for the installation to finish, then click **Enable**.
 5. If prompted to restart, fully quit and reopen DSH (do not just close the window).
 
 ### CLI
 
 ```sh
-dsh plugin --profile web add dsh-devbench-plugin@1.0.7
+dsh plugin --profile web add dsh-devbench-plugin@1.0.8
 ```
 
 ### Offline tarball
@@ -53,7 +53,7 @@ dsh plugin --profile web add dsh-devbench-plugin@1.0.7
 Install a release tarball by its absolute path:
 
 ```sh
-dsh plugin --profile web add /absolute/path/to/dsh-devbench-plugin-1.0.7.tgz
+dsh plugin --profile web add /absolute/path/to/dsh-devbench-plugin-1.0.8.tgz
 ```
 
 Keep the tarball file: the profile dependency records its `file:` absolute path.

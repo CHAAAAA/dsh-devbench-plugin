@@ -7,7 +7,7 @@
 | 项 | 值 |
 | --- | --- |
 | 包名 | `dsh-devbench-plugin` |
-| 版本 | **1.0.7** |
+| 版本 | **1.0.8** |
 | DSH 兼容 | `>=0.2.1-rc.3 <0.3.0-0` |
 | Node.js | >= 24.9.0 |
 | 许可证 | MIT |
@@ -38,14 +38,14 @@
 
 1. 打开 DSH 的「插件」页（部分版本位于「设置 → 插件」）。
 2. 点「添加插件」。
-3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.7`。
+3. 输入包名与精确版本：`dsh-devbench-plugin@1.0.8`。
 4. 等待安装完成，点「立即启用」。
 5. 如果提示需要重启，完全退出并重新打开 DSH（不要只关闭窗口）。
 
 ### CLI
 
 ```sh
-dsh plugin --profile web add dsh-devbench-plugin@1.0.7
+dsh plugin --profile web add dsh-devbench-plugin@1.0.8
 ```
 
 ### 离线 tarball
@@ -53,7 +53,7 @@ dsh plugin --profile web add dsh-devbench-plugin@1.0.7
 用绝对路径安装发布的 tarball：
 
 ```sh
-dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.7.tgz
+dsh plugin --profile web add /绝对路径/dsh-devbench-plugin-1.0.8.tgz
 ```
 
 请保留 tarball 原文件：profile 依赖会记录它的 `file:` 绝对路径。
