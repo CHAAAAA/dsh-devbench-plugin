@@ -8,7 +8,7 @@
 | --- | --- |
 | Package | `dsh-devbench-plugin` |
 | Version | **1.0.8** |
-| DSH compatibility | `>=0.2.1-rc.3 <0.3.0-0` |
+| DSH compatibility | `>=0.2.1-rc.3 <0.2.2-0 \|\| >=0.2.2-rc.1 <0.3.0-0` |
 | Node.js | >= 24.9.0 |
 | License | MIT |
 
