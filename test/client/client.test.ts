@@ -363,7 +363,7 @@ test('plugin registers the session right sidebar when the DSH seat is available'
   const title = registered.find(function (item) { return item.config.name === 'sidebar.right.pane.tab.title' })
   assert.equal(title.config.key, 'dsh-devbench-plugin')
   assert.equal(title.component, DevbenchSidebarTitle)
-  const header = registered.find(function (item) { return item.config.name === 'conversation.session.header.actions' })
+  const header = registered.find(function (item) { return item.config.name === 'conversation.session.header.utilities' })
   assert.equal(header.config.id, 'devbench-link')
   assert.equal(header.config.order, 20)
   assert.equal(header.component, SessionRequirementAction)

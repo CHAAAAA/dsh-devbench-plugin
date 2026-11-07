@@ -46,9 +46,11 @@ export function createPlugin(): { inject: string[]; apply(ctx: ClientContext): v
       })
       // One merged session header entry (REQ-20261103-002): the main button opens the
       // session's requirement, the caret menu organizes it or opens the DevBench sidebar.
-      ctx.slots.inject('conversation.session.header.actions', function () {
+      // `utilities`, not `actions`: DSH 0.2.2 clips and masks `.titleCluster`, which owns
+      // the actions slot, so the popover and dialog rendered there were invisible.
+      ctx.slots.inject('conversation.session.header.utilities', function () {
         return ctx.slots.register({
-          name: 'conversation.session.header.actions',
+          name: 'conversation.session.header.utilities',
           id: 'devbench-link',
           order: 20,
           locale: NS,
